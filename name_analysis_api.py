@@ -19,19 +19,20 @@ client = OpenAI(api_key=openai_api_key)
 # ✅ Email SMTP settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USERNAME = "kata.chatbot@gmail.com"  # Your Gmail
-SMTP_PASSWORD = "haywkvoyoaykvkul"         # Your App Password (no spaces)
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = "haywkvoyoaykvkul"  # (no spaces!)
 
 # ✅ Function to send email
-def send_email(full_name, phone, email, address):
+def send_email(full_name, dob, phone, email, country):
     subject = "New User Submission from KataChatBot"
     body = f"""
 New User Submission:
 
-👤 Full Name: {full_name}
+👤 Full Legal Name: {full_name}
+🎂 Date of Birth: {dob}
 📞 Phone: {phone}
 📧 Email: {email}
-🏠 Address: {address}
+🌍 Country: {country}
 """
     msg = MIMEText(body)
     msg['Subject'] = subject
@@ -56,20 +57,30 @@ def analyze_name():
         data = request.form
 
     name = data.get('name', '').strip()
+    dob_day = data.get('dob_day', '').strip()
+    dob_month = data.get('dob_month', '').strip()
+    dob_year = data.get('dob_year', '').strip()
     phone = data.get('phone', '').strip()
     email = data.get('email', '').strip()
-    address = data.get('address', '').strip()
+    country = data.get('country', '').strip()
+    other_country = data.get('other_country', '').strip()
+
+    if country == "Other":
+        country = other_country
 
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Start sending email in background (no user wait)
+    # ✅ Assemble Date of Birth
+    dob = f"{dob_day} {dob_month} {dob_year}"
+
+    # ✅ Start sending email in background
     try:
-        send_email(name, phone, email, address)
+        send_email(name, dob, phone, email, country)
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-    # ✅ Prepare OpenAI prompt
+    # ✅ Prepare OpenAI prompt (ONLY use Full Legal Name)
     user_message = f"Please provide professional educational advice based on internal assessment results for a child profile. (Background information only, not for direct analysis): {name}"
 
     try:
@@ -81,7 +92,7 @@ def analyze_name():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # ✅ Clean up AI output
+    # ✅ Clean AI Output
     clean_text = re.sub(r'(?i)<br\s*/?>', '\n', analysis_text)
     clean_text = re.sub(r'<[^>]+>', '', clean_text)
 
