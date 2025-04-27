@@ -5,6 +5,7 @@ from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from openai import OpenAI
 from flask_cors import CORS
+from datetime import datetime
 
 # ✅ Initialize Flask app
 app = Flask(__name__)
@@ -19,20 +20,23 @@ client = OpenAI(api_key=openai_api_key)
 # ✅ Email SMTP settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USERNAME = "kata.chatbot@gmail.com"
-SMTP_PASSWORD = "haywkvoyoaykvkul"  # (no spaces!)
+SMTP_USERNAME = "kata.chatbot@gmail.com"  # Your Gmail
+SMTP_PASSWORD = "haywkvoyoaykvkul"         # Your Gmail App Password (no spaces!)
 
 # ✅ Function to send email
-def send_email(full_name, dob, phone, email, country):
-    subject = "New User Submission from KataChatBot"
+def send_email(full_name, gender, dob, age, phone, email, country):
+    subject = "New KataChatBot User Submission"
     body = f"""
-New User Submission:
+🎯 New User Submission:
 
-👤 Full Legal Name: {full_name}
+👤 Full Legal Name of Child: {full_name}
+⚧️ Gender: {gender}
 🎂 Date of Birth: {dob}
-📞 Phone: {phone}
-📧 Email: {email}
+🎯 Age: {age} years old
 🌍 Country: {country}
+
+📞 Parent's Phone Number: {phone}
+📧 Parent's Email Address: {email}
 """
     msg = MIMEText(body)
     msg['Subject'] = subject
@@ -47,41 +51,50 @@ New User Submission:
     except Exception as e:
         print(f"Error sending email: {e}")
 
-# ✅ Main Route
+# ✅ Main API
 @app.route('/analyze_name', methods=['POST'])
 def analyze_name():
-    """Endpoint to analyze a name and email user data."""
+    """Endpoint to analyze a child's profile and email user data."""
     if request.is_json:
         data = request.get_json()
     else:
         data = request.form
 
     name = data.get('name', '').strip()
-    dob_day = data.get('dob_day', '').strip()
-    dob_month = data.get('dob_month', '').strip()
-    dob_year = data.get('dob_year', '').strip()
+    gender = data.get('gender', '').strip()
+    dob = data.get('dob', '').strip()
     phone = data.get('phone', '').strip()
     email = data.get('email', '').strip()
     country = data.get('country', '').strip()
-    other_country = data.get('other_country', '').strip()
-
-    if country == "Other":
-        country = other_country
 
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Assemble Date of Birth
-    dob = f"{dob_day} {dob_month} {dob_year}"
-
-    # ✅ Start sending email in background
+    # ✅ Calculate Age based on DOB
     try:
-        send_email(name, dob, phone, email, country)
+        dob_parts = dob.split()
+        day = int(dob_parts[0])
+        month = datetime.strptime(dob_parts[1], "%B").month  # Convert month name to number
+        year = int(dob_parts[2])
+        birthdate = datetime(year, month, day)
+        today = datetime.today()
+        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    except Exception as e:
+        print(f"Error parsing DOB: {e}")
+        age = "Unknown"
+
+    # ✅ Send email to kata.chatbot@gmail.com
+    try:
+        send_email(name, gender, dob, age, phone, email, country)
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-    # ✅ Prepare OpenAI prompt (ONLY use Full Legal Name)
-    user_message = f"Please provide professional educational advice based on internal assessment results for a child profile. (Background information only, not for direct analysis): {name}"
+    # ✅ Prepare OpenAI prompt (ONLY send Child Name to AI)
+    user_message = (
+        f"Please provide professional educational advice for a child named '{name}'. "
+        f"This child is {age} years old and comes from {country}. "
+        f"Only use this background information. Do not reference the name analysis directly."
+    )
 
     try:
         response = client.chat.completions.create(
@@ -92,7 +105,7 @@ def analyze_name():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # ✅ Clean AI Output
+    # ✅ Clean up AI Output
     clean_text = re.sub(r'(?i)<br\s*/?>', '\n', analysis_text)
     clean_text = re.sub(r'<[^>]+>', '', clean_text)
 
