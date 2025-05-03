@@ -3,7 +3,7 @@ import re
 import smtplib
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
-from openai import OpenAI
+import openai
 from flask_cors import CORS
 from datetime import datetime
 
@@ -12,10 +12,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise RuntimeError("OpenAI API key not set.")
-client = OpenAI(api_key=openai_api_key)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
@@ -120,7 +117,7 @@ Let’s help your child shine in the most precise and creative way possible. �
 
     # ✅ OpenAI API Call
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
