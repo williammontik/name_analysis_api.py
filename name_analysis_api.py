@@ -11,8 +11,8 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# ✅ OpenAI v1.x Client Setup
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ✅ OpenAI API Key
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
@@ -115,9 +115,9 @@ Children’s personalities shift over time, and so should their learning methods
 Let’s help your child shine in the most precise and creative way possible. 🌟
 """
 
-    # ✅ OpenAI API Call (v1.x syntax)
+    # ✅ OpenAI API Call with Traceback Logging
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
