@@ -3,7 +3,7 @@ import re
 import smtplib
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
-import openai
+from openai import OpenAI
 from flask_cors import CORS
 from datetime import datetime
 
@@ -12,15 +12,18 @@ app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OpenAI API key not set.")
+client = OpenAI(api_key=openai_api_key)
 
 # ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # ✅ From environment, not hardcoded
 
-# ✅ Email Function
+# ✅ Function to send email
 def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
     subject = "New KataChatBot User Submission"
     body = f"""
@@ -69,7 +72,7 @@ def analyze_name():
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Calculate Age
+    # ✅ Calculate age
     try:
         day, month_str, year = dob.split()
         month = datetime.strptime(month_str, "%B").month
@@ -80,56 +83,28 @@ def analyze_name():
         print(f"❌ Error calculating age: {e}")
         age = "Unknown"
 
-    # ✅ Send Email
+    # ✅ Send email
     try:
         send_email(name, chinese_name, gender, dob, age, phone, email, country)
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-    # ✅ OpenAI Prompt
-    prompt = f"""
-You are an educational advisor AI trained on global child development data. Generate a warm and insightful learning advice message for a parent.
+    # ✅ OpenAI analysis
+    prompt = (
+        f"Please provide professional educational advice for a child named '{name}'. "
+        f"This child is {age} years old and comes from {country}. "
+        f"Only use this background information. Do not reference the name analysis directly."
+    )
 
-👤 Full Legal Name (English): {name}
-🈶 Chinese Name: {chinese_name}
-⚧️ Gender: {gender}
-🎂 Date of Birth: {dob}
-📞 Parent's Phone: {phone}
-📧 Parent's Email: {email}
-🌍 Country: {country}
-
-🎉 Your Personalized AI Analysis:
-
-Based on AI geographical insights and developmental trends among {age}-year-old {gender.lower()} children in {country}, our system identified key learning approaches that resonate with similar profiles in your area.
-
-Please include:
-- Age-appropriate advice
-- Localized and cultural recommendations
-- Suggestions for creativity, focus, and cognitive growth
-
-🪄 Final Advice:
-✨ If you’d like a very tailored and updated approach for how your child can improve even better — including spotting the right tutor who matches your child’s evolving character and age band — we strongly recommend speaking with our real human support team.
-
-Children’s personalities shift over time, and so should their learning methods. For highly personalized and insightful guidance, chat with us directly on Telegram at @katachat007.
-
-Let’s help your child shine in the most precise and creative way possible. 🌟
-"""
-
-    # ✅ OpenAI API Call with Traceback Logging
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        analysis = response.choices[0].message.content.strip()
-        if not analysis:
-            print("❌ GPT response was empty.")
-            analysis = "⚠️ No analysis could be generated at this time."
+        analysis = response.choices[0].message.content
     except Exception as e:
-        import traceback
-        print("❌ OpenAI error:", e)
-        traceback.print_exc()
-        analysis = f"⚠️ OpenAI system error: {str(e)}"
+        return jsonify({"error": str(e)}), 500
 
+    # ✅ Clean output
     clean = re.sub(r"<[^>]+>", "", analysis)
     return jsonify({"analysis": clean})
