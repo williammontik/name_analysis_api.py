@@ -115,16 +115,20 @@ Children’s personalities shift over time, and so should their learning methods
 Let’s help your child shine in the most precise and creative way possible. 🌟
 """
 
-    # ✅ OpenAI API Call
+    # ✅ OpenAI API Call with Safe Fallback
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        analysis = response.choices[0].message.content
+        analysis = response.choices[0].message.content.strip()
+        if not analysis:
+            print("❌ GPT response was empty.")
+            analysis = "⚠️ No analysis could be generated at this time."
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("❌ OpenAI error:", e)
+        analysis = "⚠️ No analysis could be generated due to a system error."
 
-    # ✅ Clean Output
+    # ✅ Clean and Return
     clean = re.sub(r"<[^>]+>", "", analysis)
     return jsonify({"analysis": clean})
