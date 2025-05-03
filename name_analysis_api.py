@@ -3,7 +3,7 @@ import re
 import smtplib
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
-from openai import OpenAI
+import openai
 from flask_cors import CORS
 from datetime import datetime
 
@@ -12,10 +12,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise RuntimeError("OpenAI API key not set.")
-client = OpenAI(api_key=openai_api_key)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
@@ -79,9 +76,11 @@ def analyze_name():
         birthdate = datetime(int(year), month, int(day))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+        age_str = f"{age}-year-old"
     except Exception as e:
         print(f"❌ Error calculating age: {e}")
         age = "Unknown"
+        age_str = "children"
 
     # ✅ Send Email
     try:
@@ -103,25 +102,37 @@ You are an educational advisor AI trained on global child development data. Gene
 
 🎉 Your Personalized AI Analysis:
 
-Based on AI geographical insights and developmental trends among {age}-year-old {gender.lower()} children in {country}, our system identified key learning approaches that resonate with similar profiles in your area.
+Based on AI geographical insights and developmental trends among {age_str} {gender.lower()} children in {country}, our system identified key learning approaches that resonate with similar profiles in your area.
 
 Please include:
-- Age-appropriate advice
+- Age-appropriate educational advice
 - Localized and cultural recommendations
 - Suggestions for creativity, focus, and cognitive growth
 
+📊 Important AI Insight from Similar Profiles:
+
+Our AI analyzed developmental trends among children in the same age group, gender, and region as {name}. It uncovered patterns that show how early support can shape outcomes dramatically.
+
+- ✅ A significant proportion of children who received timely, personalized learning support demonstrated noticeable gains in confidence, creativity, and attention span within just a few months.
+- ⚠️ On the other hand, a worrying percentage of children who lacked targeted help showed declining interest in learning, especially during key transition years like {age - 1} to {age}.
+
+These insights reflect the reality of many families — where delayed action led to unnecessary academic or emotional struggles.
+
+🎯 Every child is unique, but trends like these remind us how much timely care can influence a child's long-term growth.
+
 🪄 Final Advice:
-✨ If you’d like a very tailored and updated approach for how your child can improve even better — including spotting the right tutor who matches your child’s evolving character and age band — we strongly recommend speaking with our real human support team.
+✨ That’s why we strongly encourage you to take one more step — talk to a real human from our educational team on Telegram at @katachat007.
 
-Children’s personalities shift over time, and so should their learning methods. For highly personalized and insightful guidance, chat with us directly on Telegram at @katachat007.
+Let’s zoom in on your child’s character and evolving needs. Together, we’ll help them thrive with precise strategies, the right tutor, and tools designed just for them.
 
-Let’s help your child shine in the most precise and creative way possible. 🌟
+Your child deserves this clarity — and we’re here to walk that journey with you. 🌱
 """
 
-    # ✅ OpenAI API Call
+    # ✅ OpenAI API Call with higher temperature
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
+            temperature=0.9,  # 🎯 More expressive and emotional
             messages=[{"role": "user", "content": prompt}]
         )
         analysis = response.choices[0].message.content
