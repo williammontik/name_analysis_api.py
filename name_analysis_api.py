@@ -3,7 +3,7 @@ import re
 import smtplib
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
-import openai
+from openai import OpenAI
 from flask_cors import CORS
 from datetime import datetime
 
@@ -12,15 +12,18 @@ app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OpenAI API key not set.")
+client = OpenAI(api_key=openai_api_key)
 
 # ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # ✅ From environment, not hardcoded
 
-# ✅ Email Function
+# ✅ Function to send email
 def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
     subject = "New KataChatBot User Submission"
     body = f"""
@@ -69,85 +72,39 @@ def analyze_name():
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Calculate Age
+    # ✅ Calculate age
     try:
         day, month_str, year = dob.split()
         month = datetime.strptime(month_str, "%B").month
         birthdate = datetime(int(year), month, int(day))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
-        age_str = f"{age}-year-old"
-        age_range = f"{age - 1} to {age}"
     except Exception as e:
         print(f"❌ Error calculating age: {e}")
         age = "Unknown"
-        age_str = "children"
-        age_range = "early childhood"
 
-    # ✅ Send Email
+    # ✅ Send email
     try:
         send_email(name, chinese_name, gender, dob, age, phone, email, country)
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-    # ✅ OpenAI Prompt
-    prompt = f"""
-You are an educational advisor AI trained on global child development data. Generate a warm and insightful learning advice message for a parent.
+    # ✅ OpenAI analysis
+    prompt = (
+        f"Please provide professional educational advice for a child named '{name}'. "
+        f"This child is {age} years old and comes from {country}. "
+        f"Only use this background information. Do not reference the name analysis directly."
+    )
 
-👤 Full Legal Name (English): {name}
-🈶 Chinese Name: {chinese_name}
-⚧️ Gender: {gender}
-🎂 Date of Birth: {dob}
-📞 Parent's Phone: {phone}
-📧 Parent's Email: {email}
-🌍 Country: {country}
-
-🎉 Your Personalized AI Analysis:
-
-Based on AI geographical insights and developmental trends among {age_str} {gender.lower()} children in {country}, our system identified key learning approaches that resonate with similar profiles in your area.
-
-Please include:
-- Age-appropriate educational advice
-- Localized and cultural recommendations
-- Suggestions for creativity, focus, and cognitive growth
-
-📊 Important AI Insight from Similar Profiles:
-
-Our AI analyzed developmental trends among children in the same age group, gender, and region as {name}. It uncovered patterns that show how early support can shape outcomes dramatically.
-
-- ✅ A significant proportion of children who received timely, personalized learning support demonstrated noticeable gains in confidence, creativity, and attention span within just a few months.
-- ⚠️ On the other hand, a worrying percentage of children who lacked targeted help showed declining interest in learning, especially during key transition years like {age_range}.
-
-These insights reflect the reality of many families — where delayed action led to unnecessary academic or emotional struggles.
-
-🎯 Every child is unique, but trends like these remind us how much timely care can influence a child's long-term growth.
-
-🪄 Final Advice:
-✨ That’s why we strongly encourage you to take one more step — talk to a real human from our educational team on Telegram at @katachat007.
-
-Let’s zoom in on your child’s character and evolving needs. Together, we’ll help them thrive with precise strategies, the right tutor, and tools designed just for them.
-
-Your child deserves this clarity — and we’re here to walk that journey with you. 🌱
-"""
-
-    # ✅ DEBUG Prompt Output
-    print("📝 Prompt sent to OpenAI:")
-    print(prompt)
-
-    # ✅ OpenAI API Call + Safe Output Handling
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            temperature=0.9,
             messages=[{"role": "user", "content": prompt}]
         )
-        message = response.choices[0].message.content.strip()
-        if not message:
-            print("❌ GPT response is empty.")
-            message = "⚠️ No analysis could be generated at this time."
+        analysis = response.choices[0].message.content
     except Exception as e:
-        print("❌ OpenAI error:", e)
-        message = "⚠️ No analysis could be generated due to a system error."
+        return jsonify({"error": str(e)}), 500
 
-    clean = re.sub(r"<[^>]+>", "", message)
+    # ✅ Clean output
+    clean = re.sub(r"<[^>]+>", "", analysis)
     return jsonify({"analysis": clean})
