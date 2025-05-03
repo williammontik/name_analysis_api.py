@@ -115,7 +115,7 @@ Children’s personalities shift over time, and so should their learning methods
 Let’s help your child shine in the most precise and creative way possible. 🌟
 """
 
-    # ✅ OpenAI API Call with Safe Fallback
+    # ✅ OpenAI API Call with Traceback Logging
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -126,9 +126,10 @@ Let’s help your child shine in the most precise and creative way possible. �
             print("❌ GPT response was empty.")
             analysis = "⚠️ No analysis could be generated at this time."
     except Exception as e:
+        import traceback
         print("❌ OpenAI error:", e)
-        analysis = "⚠️ No analysis could be generated due to a system error."
+        traceback.print_exc()
+        analysis = f"⚠️ OpenAI system error: {str(e)}"
 
-    # ✅ Clean and Return
     clean = re.sub(r"<[^>]+>", "", analysis)
     return jsonify({"analysis": clean})
