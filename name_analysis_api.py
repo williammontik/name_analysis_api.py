@@ -7,21 +7,21 @@ from openai import OpenAI
 from flask_cors import CORS
 from datetime import datetime
 
-# ✅ Initialize Flask app
+# ✅ Flask App
 app = Flask(__name__)
 CORS(app)
 
-# ✅ OpenAI API Key from environment variables
+# ✅ OpenAI API Key
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    raise RuntimeError("OpenAI API key not set in environment variables.")
+    raise RuntimeError("OpenAI API key not set.")
 client = OpenAI(api_key=openai_api_key)
 
-# ✅ Email SMTP settings
+# ✅ Email settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # ✅ Secure method
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # ✅ From environment, not hardcoded
 
 # ✅ Function to send email
 def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
@@ -29,15 +29,15 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country)
     body = f"""
 🎯 New User Submission:
 
-👤 Full Legal Name of Child: {full_name}
+👤 Full Legal Name: {full_name}
 🈶 Chinese Name: {chinese_name}
 ⚧️ Gender: {gender}
 🎂 Date of Birth: {dob}
 🎯 Age: {age} years old
 🌍 Country: {country}
 
-📞 Parent's Phone Number: {phone}
-📧 Parent's Email Address: {email}
+📞 Phone: {phone}
+📧 Email: {email}
 """
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -49,10 +49,11 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country)
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
+        print("✅ Email sent successfully.")
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print("❌ EMAIL ERROR:", e)
 
-# ✅ Main API Endpoint
+# ✅ API Endpoint
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
     if request.is_json:
@@ -73,25 +74,23 @@ def analyze_name():
 
     # ✅ Calculate age
     try:
-        dob_parts = dob.split()
-        day = int(dob_parts[0])
-        month = datetime.strptime(dob_parts[1], "%B").month
-        year = int(dob_parts[2])
-        birthdate = datetime(year, month, day)
+        day, month_str, year = dob.split()
+        month = datetime.strptime(month_str, "%B").month
+        birthdate = datetime(int(year), month, int(day))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
     except Exception as e:
-        print(f"Error parsing DOB: {e}")
+        print(f"❌ Error calculating age: {e}")
         age = "Unknown"
 
     # ✅ Send email
     try:
         send_email(name, chinese_name, gender, dob, age, phone, email, country)
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"❌ Failed to send email: {e}")
 
-    # ✅ OpenAI advice (name only)
-    user_message = (
+    # ✅ OpenAI analysis
+    prompt = (
         f"Please provide professional educational advice for a child named '{name}'. "
         f"This child is {age} years old and comes from {country}. "
         f"Only use this background information. Do not reference the name analysis directly."
@@ -100,13 +99,12 @@ def analyze_name():
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_message}]
+            messages=[{"role": "user", "content": prompt}]
         )
-        analysis_text = response.choices[0].message.content
+        analysis = response.choices[0].message.content
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    clean_text = re.sub(r"(?i)<br\s*/?>", "\n", analysis_text)
-    clean_text = re.sub(r"<[^>]+>", "", clean_text)
-
-    return jsonify({"analysis": clean_text})
+    # ✅ Clean output
+    clean = re.sub(r"<[^>]+>", "", analysis)
+    return jsonify({"analysis": clean})
