@@ -90,13 +90,17 @@ def analyze_name():
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-    # ✅ Randomized stats
-    improved_percent = random.randint(65, 78)
-    struggle_percent = random.randint(37, 48)
+    # ✅ Smarter randomized stats
+    base_improve = random.randint(65, 80)
+    base_struggle = random.randint(30, 45)
+    if base_struggle >= base_improve - 5:
+        base_struggle = base_improve - random.randint(10, 15)
+    improved_percent = round(base_improve / 5) * 5
+    struggle_percent = round(base_struggle / 5) * 5
 
-    # ✅ OpenAI analysis prompt
+    # ✅ OpenAI analysis
     prompt = f"""
-You are an educational advisor AI trained on global child development data. Generate a warm and insightful learning advice message for a parent.
+You are an elite educational advisor AI trained on deep global datasets about children’s development and academic psychology. Speak warmly and emotionally — like a trusted friend who understands parental concerns. Mix data, storytelling, and practical advice.
 
 Child Profile:
 - Full Name: {name}
@@ -108,20 +112,28 @@ Child Profile:
 - Country: {country}
 - Age: {age}
 
-Based on developmental patterns among {age}-year-old {gender.lower()} children in {country}, AI analysis suggests:
+AI Insight:
+Children aged {age} in {country} often face invisible crossroads — some grow curious and focused, while others start showing signs of detachment or learning fatigue.
 
-📊 Insights from similar profiles:
-- About {improved_percent}% of children with personalized early support saw major improvements in focus, creativity, and emotional wellbeing.
-- However, nearly {struggle_percent}% of children without tailored help struggled with learning fatigue and declining motivation—especially during age shifts like {age - 1} to {age}.
+📊 Our AI has identified that:
+- Around {improved_percent}% of children in this age/gender/location profile who got timely, personalized help experienced a transformation: greater confidence, better attention span, and joyful participation in school.
+- But about {struggle_percent}% of children who didn’t get targeted support slipped into patterns of frustration, resistance to learning, emotional withdrawal — sometimes unnoticed until it became serious.
 
-Recommendations:
-- Provide hands-on learning experiences
-- Encourage expressive outlets like storytelling, music, or drawing
-- Reinforce focus through daily routines and play-based challenges
-- Introduce cultural learning based on {country}'s traditions
+💡 This is not fear — it’s foresight.
 
-Final Tip:
-To get highly personalized strategies and a spot-on tutor for your child’s evolving character, connect with a real human from our team. Chat with us on Telegram at @katachat007. A precise plan today can shape a confident learner tomorrow.
+Advice:
+1. Spark Curiosity: Let them explore through art, music, nature, or experiments — things that make them ask more questions.
+2. Give Structure: Routine builds safety. Focus games, light challenges, and time-blocked play can reshape attention span.
+3. Emotional Coaching: Teach naming feelings, and encourage expression — children who feel seen will stay open to learning.
+
+In {country}, we’ve also seen cultural tools (like traditional stories, values of diligence and filial piety, or expressive arts) play a major role in turning kids around. Use what’s already meaningful in your community.
+
+Final Advice:
+Your child’s character today is only one version of their future. The biggest danger is assuming things will fix themselves.
+
+That’s why we strongly recommend you speak directly to one of our real human learning specialists at @katachat007 (Telegram). We’ll zoom into your child’s specific personality, recommend the right type of tutor, and guide you through this age band with precision and heart.
+
+Your child deserves more than average answers. Let’s build the learning path that fits them best — together.
 """
 
     try:
