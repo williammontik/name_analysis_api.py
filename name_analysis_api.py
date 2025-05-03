@@ -1,24 +1,133 @@
-prompt = f"""
-...
+import os
+import re
+import smtplib
+from email.mime.text import MIMEText
+from flask import Flask, request, jsonify
+from openai import OpenAI
+from flask_cors import CORS
+from datetime import datetime
+
+# ✅ Flask App
+app = Flask(__name__)
+CORS(app)
+
+# ✅ OpenAI API Key
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OpenAI API key not set.")
+client = OpenAI(api_key=openai_api_key)
+
+# ✅ Email settings
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
+# ✅ Email Function
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
+    subject = "New KataChatBot User Submission"
+    body = f"""
+🎯 New User Submission:
+
+👤 Full Legal Name: {full_name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 Date of Birth: {dob}
+🎯 Age: {age} years old
+🌍 Country: {country}
+
+📞 Phone: {phone}
+📧 Email: {email}
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = SMTP_USERNAME
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        print("✅ Email sent successfully.")
+    except Exception as e:
+        print("❌ EMAIL ERROR:", e)
+
+# ✅ API Endpoint
+@app.route("/analyze_name", methods=["POST"])
+def analyze_name():
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
+    name = data.get("name", "").strip()
+    chinese_name = data.get("chineseName", "").strip()
+    gender = data.get("gender", "").strip()
+    dob = data.get("dob", "").strip()
+    phone = data.get("phone", "").strip()
+    email = data.get("email", "").strip()
+    country = data.get("country", "").strip()
+
+    if not name:
+        return jsonify({"error": "No name provided"}), 400
+
+    # ✅ Calculate Age
+    try:
+        day, month_str, year = dob.split()
+        month = datetime.strptime(month_str, "%B").month
+        birthdate = datetime(int(year), month, int(day))
+        today = datetime.today()
+        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    except Exception as e:
+        print(f"❌ Error calculating age: {e}")
+        age = "Unknown"
+
+    # ✅ Send Email
+    try:
+        send_email(name, chinese_name, gender, dob, age, phone, email, country)
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+    # ✅ OpenAI Prompt
+    prompt = f"""
+You are an educational advisor AI trained on global child development data. Generate a warm and insightful learning advice message for a parent.
+
+👤 Full Legal Name (English): {name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 Date of Birth: {dob}
+📞 Parent's Phone: {phone}
+📧 Parent's Email: {email}
+🌍 Country: {country}
 
 🎉 Your Personalized AI Analysis:
-Based on AI geographical insights and developmental trends among {age_str} {gender.lower()} children in {country}, our system identified key learning approaches...
 
-📊 Important AI Insight from Similar Profiles:
+Based on AI geographical insights and developmental trends among {age}-year-old {gender.lower()} children in {country}, our system identified key learning approaches that resonate with similar profiles in your area.
 
-Our AI compared children in the same age group, gender, and location as {name}. Among these children:
-
-- ✅ Over 67% who received personalized support early showed significant improvement in focus, creativity, and emotional confidence within 6 months.
-- ⚠️ However, 43% of similar-aged children who did **not** receive tailored help faced growing frustration, low motivation, or learning disengagement — especially during transitions between age bands (e.g., 4 to 5, or 7 to 8 years old).
-
-These are not just numbers — they represent real struggles and missed potential.
-
-🎯 Every child is unique. Without timely guidance, even the brightest child may drift away from joy in learning.
+Please include:
+- Age-appropriate advice
+- Localized and cultural recommendations
+- Suggestions for creativity, focus, and cognitive growth
 
 🪄 Final Advice:
-✨ That’s why we strongly encourage you to take one more step — talk to a real human from our educational team on Telegram at @katachat007.
+✨ If you’d like a very tailored and updated approach for how your child can improve even better — including spotting the right tutor who matches your child’s evolving character and age band — we strongly recommend speaking with our real human support team.
 
-Let’s zoom in on your child’s character and evolving needs. Together, we’ll help them thrive with precise strategies, the right tutor, and tools designed just for them.
+Children’s personalities shift over time, and so should their learning methods. For highly personalized and insightful guidance, chat with us directly on Telegram at @katachat007.
 
-Your child deserves this clarity — and we’re here to walk that journey with you. 🌱
+Let’s help your child shine in the most precise and creative way possible. 🌟
 """
+
+    # ✅ OpenAI API Call
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        analysis = response.choices[0].message.content
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # ✅ Clean Output
+    clean = re.sub(r"<[^>]+>", "", analysis)
+    return jsonify({"analysis": clean})
