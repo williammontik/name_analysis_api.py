@@ -20,16 +20,17 @@ client = OpenAI(api_key=openai_api_key)
 # ✅ Email SMTP settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_USERNAME = "kata.chatbot@gmail.com"  # Your Gmail
-SMTP_PASSWORD = "haywkvoyoaykvkul"         # Your Gmail App Password (no spaces!)
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # ✅ Secure method
 
 # ✅ Function to send email
-def send_email(full_name, gender, dob, age, phone, email, country):
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
     subject = "New KataChatBot User Submission"
     body = f"""
 🎯 New User Submission:
 
 👤 Full Legal Name of Child: {full_name}
+🈶 Chinese Name: {chinese_name}
 ⚧️ Gender: {gender}
 🎂 Date of Birth: {dob}
 🎯 Age: {age} years old
@@ -39,9 +40,9 @@ def send_email(full_name, gender, dob, age, phone, email, country):
 📧 Parent's Email Address: {email}
 """
     msg = MIMEText(body)
-    msg['Subject'] = subject
-    msg['From'] = SMTP_USERNAME
-    msg['To'] = SMTP_USERNAME
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = SMTP_USERNAME
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
@@ -51,30 +52,30 @@ def send_email(full_name, gender, dob, age, phone, email, country):
     except Exception as e:
         print(f"Error sending email: {e}")
 
-# ✅ Main API
-@app.route('/analyze_name', methods=['POST'])
+# ✅ Main API Endpoint
+@app.route("/analyze_name", methods=["POST"])
 def analyze_name():
-    """Endpoint to analyze a child's profile and email user data."""
     if request.is_json:
         data = request.get_json()
     else:
         data = request.form
 
-    name = data.get('name', '').strip()
-    gender = data.get('gender', '').strip()
-    dob = data.get('dob', '').strip()
-    phone = data.get('phone', '').strip()
-    email = data.get('email', '').strip()
-    country = data.get('country', '').strip()
+    name = data.get("name", "").strip()
+    chinese_name = data.get("chineseName", "").strip()
+    gender = data.get("gender", "").strip()
+    dob = data.get("dob", "").strip()
+    phone = data.get("phone", "").strip()
+    email = data.get("email", "").strip()
+    country = data.get("country", "").strip()
 
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Calculate Age based on DOB
+    # ✅ Calculate age
     try:
         dob_parts = dob.split()
         day = int(dob_parts[0])
-        month = datetime.strptime(dob_parts[1], "%B").month  # Convert month name to number
+        month = datetime.strptime(dob_parts[1], "%B").month
         year = int(dob_parts[2])
         birthdate = datetime(year, month, day)
         today = datetime.today()
@@ -83,13 +84,13 @@ def analyze_name():
         print(f"Error parsing DOB: {e}")
         age = "Unknown"
 
-    # ✅ Send email to kata.chatbot@gmail.com
+    # ✅ Send email
     try:
-        send_email(name, gender, dob, age, phone, email, country)
+        send_email(name, chinese_name, gender, dob, age, phone, email, country)
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-    # ✅ Prepare OpenAI prompt (ONLY send Child Name to AI)
+    # ✅ OpenAI advice (name only)
     user_message = (
         f"Please provide professional educational advice for a child named '{name}'. "
         f"This child is {age} years old and comes from {country}. "
@@ -105,8 +106,7 @@ def analyze_name():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # ✅ Clean up AI Output
-    clean_text = re.sub(r'(?i)<br\s*/?>', '\n', analysis_text)
-    clean_text = re.sub(r'<[^>]+>', '', clean_text)
+    clean_text = re.sub(r"(?i)<br\s*/?>", "\n", analysis_text)
+    clean_text = re.sub(r"<[^>]+>", "", clean_text)
 
     return jsonify({"analysis": clean_text})
