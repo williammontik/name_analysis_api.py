@@ -77,10 +77,12 @@ def analyze_name():
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
         age_str = f"{age}-year-old"
+        age_range = f"{age - 1} to {age}"
     except Exception as e:
         print(f"❌ Error calculating age: {e}")
         age = "Unknown"
         age_str = "children"
+        age_range = "early childhood"
 
     # ✅ Send Email
     try:
@@ -114,7 +116,7 @@ Please include:
 Our AI analyzed developmental trends among children in the same age group, gender, and region as {name}. It uncovered patterns that show how early support can shape outcomes dramatically.
 
 - ✅ A significant proportion of children who received timely, personalized learning support demonstrated noticeable gains in confidence, creativity, and attention span within just a few months.
-- ⚠️ On the other hand, a worrying percentage of children who lacked targeted help showed declining interest in learning, especially during key transition years like {age - 1} to {age}.
+- ⚠️ On the other hand, a worrying percentage of children who lacked targeted help showed declining interest in learning, especially during key transition years like {age_range}.
 
 These insights reflect the reality of many families — where delayed action led to unnecessary academic or emotional struggles.
 
@@ -128,11 +130,11 @@ Let’s zoom in on your child’s character and evolving needs. Together, we’l
 Your child deserves this clarity — and we’re here to walk that journey with you. 🌱
 """
 
-    # ✅ OpenAI API Call with higher temperature
+    # ✅ OpenAI API Call with expressive output
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            temperature=0.9,  # 🎯 More expressive and emotional
+            temperature=0.9,
             messages=[{"role": "user", "content": prompt}]
         )
         analysis = response.choices[0].message.content
