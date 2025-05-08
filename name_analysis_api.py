@@ -8,8 +8,8 @@ from openai import OpenAI
 from flask_cors import CORS
 from datetime import datetime
 
-# ✅ Initialize Flask App
-app = Flask(__name__)  # This was missing
+# ✅ Flask App
+app = Flask(__name__)
 CORS(app)
 
 # ✅ OpenAI API Key
@@ -24,8 +24,8 @@ SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-# ✅ Email Function
-def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
+# ✅ Email Function (Updated to include Referrer)
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
     subject = "New KataChatBot User Submission"
     body = f"""
 🎯 New User Submission:
@@ -39,6 +39,7 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country)
 
 📞 Phone: {phone}
 📧 Email: {email}
+💬 Referrer: {referrer}
 """
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -63,34 +64,31 @@ def analyze_name():
         data = request.form
 
     name = data.get("name", "").strip()
-    chinese_name = data.get("chineseName", "").strip()
+    chinese_name = data.get("chinese_name", "").strip()
     gender = data.get("gender", "").strip()
-    dob_day = data.get("dob_day", "").strip()
-    dob_month = data.get("dob_month", "").strip()
-    dob_year = data.get("dob_year", "").strip()
+    dob = data.get("dob", "").strip()
     phone = data.get("phone", "").strip()
     email = data.get("email", "").strip()
     country = data.get("country", "").strip()
+    referrer = data.get("referrer", "").strip()
 
     if not name:
         return jsonify({"error": "No name provided"}), 400
 
-    # ✅ Combine dob_day, dob_month, dob_year into a single dob
+    # ✅ Calculate age
     try:
-        dob = f"{dob_day} {dob_month} {dob_year}"
-        # Calculate age
-        month = datetime.strptime(dob_month, "%B").month
-        birthdate = datetime(int(dob_year), month, int(dob_day))
+        day, month_str, year = dob.split()
+        month = datetime.strptime(month_str, "%B").month
+        birthdate = datetime(int(year), month, int(day))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
     except Exception as e:
         print(f"❌ Error calculating age: {e}")
-        dob = "Unknown"
         age = "Unknown"
 
-    # ✅ Send email
+    # ✅ Send email with the referrer included
     try:
-        send_email(name, chinese_name, gender, dob, age, phone, email, country)
+        send_email(name, chinese_name, gender, dob, age, phone, email, country, referrer)
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
