@@ -1,256 +1,217 @@
-# ... (Previous imports remain the same)
+import os
+import io
+import base64
+import logging
+from datetime import datetime
 
-# —–––––––––––––––––––––––––––––––––––––––––––––
-# Updated Configuration for Matplotlib
-# —–––––––––––––––––––––––––––––––––––––––––––––
-plt.style.use('seaborn')
-matplotlib.rcParams['font.family'] = 'Roboto'
-matplotlib.rcParams['axes.titlepad'] = 20
-COLOR_PALETTE = ['#2980b9', '#2ecc71', '#e74c3c', '#9b59b6']
+from flask import Flask, request, render_template_string
+from flask_cors import CORS
+from dateutil import parser
 
-# —–––––––––––––––––––––––––––––––––––––––––––––
-# Enhanced Chart Generation Functions
-# —–––––––––––––––––––––––––––––––––––––––––––––
+# 1) Force Agg backend for headless servers
+import matplotlib
+matplotlib.use("Agg")
 
-def create_bar_chart(data, title):
-    fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(data.keys(), data.values(), color=COLOR_PALETTE, edgecolor='none')
-    ax.set_title(title, fontsize=16, fontweight='bold', color='#2c3e50')
-    ax.set_ylabel("Percentage (%)", fontsize=12)
-    ax.tick_params(axis='x', labelsize=12)
-    ax.tick_params(axis='y', labelsize=10)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height}%', ha='center', va='bottom',
-                fontsize=10, color='#2c3e50')
-    
-    return fig
+# 2) Import pyplot and set style to ggplot
+import matplotlib.pyplot as plt
+plt.style.use("ggplot")
 
-def create_pie_chart(data, title):
-    fig, ax = plt.subplots(figsize=(8, 5))
-    wedges, texts, autotexts = ax.pie(
-        data.values(), 
-        labels=data.keys(), 
-        autopct="%1.1f%%", 
-        startangle=140,
-        colors=COLOR_PALETTE,
-        textprops={'fontsize': 12},
-        wedgeprops={'edgecolor': 'white', 'linewidth': 2}
-    )
-    ax.set_title(title, fontsize=16, fontweight='bold', color='#2c3e50', pad=20)
-    plt.setp(autotexts, size=12, weight='bold', color='white')
-    return fig
+# (Optional) OpenAI import
+from openai import OpenAI
 
-# —–––––––––––––––––––––––––––––––––––––––––––––
-# Updated HTML Template with Modern Styling
-# —–––––––––––––––––––––––––––––––––––––––––––––
+app = Flask(__name__)
+CORS(app)
+app.logger.setLevel(logging.DEBUG)
 
-HTML_TEMPLATE = """
+# — Configuration —
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+# — Helper to encode figures —
+def encode_fig_to_base64(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    data = base64.b64encode(buf.read()).decode("ascii")
+    plt.close(fig)
+    return f"data:image/png;base64,{data}"
+
+# — Main endpoint —
+@app.route("/analyze_name", methods=["POST"])
+def analyze_name():
+    payload = request.form if request.form else (request.get_json() or {})
+    name     = payload.get("name", "").strip() or "Unknown"
+    country  = payload.get("country", "").strip() or "Singapore"
+
+    # Build & parse DOB
+    dob_raw = payload.get("dob", "").strip()
+    if not dob_raw:
+        d = payload.get("dob_day","").strip()
+        m = payload.get("dob_month","").strip()
+        y = payload.get("dob_year","").strip()
+        dob_raw = f"{d} {m} {y}".strip()
+
+    try:
+        parts = dob_raw.split()
+        if len(parts) == 3:
+            dd, mon_str, yy = parts
+            mon_idx = datetime.strptime(mon_str, "%B").month
+            bd = datetime(int(yy), mon_idx, int(dd))
+        else:
+            bd = parser.parse(dob_raw, dayfirst=True)
+        today = datetime.today()
+        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+    except Exception:
+        app.logger.warning(f"Failed to parse DOB '{dob_raw}'", exc_info=True)
+        age = "Unknown"
+
+    # Synthetic data
+    prefs = {"Auditory": 50, "Visual": 35, "Reading & Writing": 15}
+    habits= {"Studying Alone": 45, "Group Study": 30, "Online Study": 25}
+    math  = {
+      "Algebra":  {"local":70, "regional":60, "global":None},
+      "Calculus": {"local":65, "regional":None, "global":55}
+    }
+    regional = {
+      "Weekly Study Hours":    {"SG":15, "Other":10},
+      "Homework Completion %": {"SG":85, "Other":75}
+    }
+    findings = [
+      f"{prefs['Auditory']}% prefer auditory learning.",
+      f"Algebra local score: {math['Algebra']['local']}% vs regional {math['Algebra']['regional']}%.",
+      f"Singaporeans study {regional['Weekly Study Hours']['SG']} hrs/week vs {regional['Weekly Study Hours']['Other']} hrs regional."
+    ]
+
+    # Generate charts
+    chart1 = chart2 = None
+    try:
+        fig1, ax1 = plt.subplots()
+        ax1.bar(prefs.keys(), prefs.values())
+        ax1.set_title("Learning Preferences")
+        ax1.set_ylabel("Percentage (%)")
+        chart1 = encode_fig_to_base64(fig1)
+
+        fig2, ax2 = plt.subplots()
+        ax2.pie(habits.values(), labels=habits.keys(), autopct="%1.1f%%", startangle=140)
+        ax2.set_title("Study Habits")
+        chart2 = encode_fig_to_base64(fig2)
+    except Exception:
+        app.logger.error("Chart generation failed", exc_info=True)
+
+    # Optional AI analysis with graceful fallback
+    analysis = "⚠️ AI analysis currently unavailable."
+    if client:
+        try:
+            prompt = f"Generate a concise data report for a {age}-year-old male in {country}."
+            resp = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role":"user","content":prompt}]
+            )
+            analysis = resp.choices[0].message.content.strip()
+        except Exception:
+            app.logger.warning("OpenAI call failed; using fallback.", exc_info=True)
+
+    # Render the final HTML
+    html = render_template_string("""
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Learning Patterns Analysis | KataChatBot AI</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Condensed:wght@700&display=swap" rel="stylesheet">
+  <title>Learning Patterns Analysis</title>
   <style>
-    :root {
-      --primary: #2980b9;
-      --secondary: #2ecc71;
-      --accent: #e74c3c;
-      --dark: #2c3e50;
-      --light: #ecf0f1;
-    }
-    
-    body {
-      font-family: 'Roboto', sans-serif;
-      margin: 0;
-      padding: 40px;
-      color: #444;
-      background: #f8f9fa;
-      line-height: 1.6;
-      animation: fadeIn 0.8s ease;
-    }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    
-    h1 {
-      color: var(--dark);
-      font-family: 'Roboto Condensed', sans-serif;
-      font-size: 2.4em;
-      margin-bottom: 10px;
-      border-bottom: 3px solid var(--primary);
-      padding-bottom: 15px;
-    }
-    
-    h2 {
-      color: var(--dark);
-      font-family: 'Roboto Condensed', sans-serif;
-      margin-top: 30px;
-      padding-bottom: 10px;
-      position: relative;
-    }
-    
-    h2::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 60px;
-      height: 3px;
-      background: var(--primary);
-    }
-    
-    .charts {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 30px;
-      margin: 40px 0;
-    }
-    
-    .charts img {
-      width: 100%;
-      border-radius: 12px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .charts img:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 12px 25px rgba(0,0,0,0.15);
-    }
-    
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 25px 0;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 15px rgba(0,0,0,0.1);
-      animation: slideIn 0.6s ease;
-    }
-    
-    th, td {
-      padding: 15px 20px;
-      text-align: left;
-      border-bottom: 1px solid #eee;
-    }
-    
-    th {
-      background: var(--primary);
-      color: white;
-      font-weight: 500;
-      text-transform: uppercase;
-      font-size: 0.9em;
-    }
-    
-    tr:nth-child(even) {
-      background: #f8fafb;
-    }
-    
-    tr:hover {
-      background: #f1f8ff;
-      transform: scale(1.02);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-      transition: all 0.2s ease;
-    }
-    
-    .analysis-box {
-      background: linear-gradient(145deg, #f8f9fa, #ffffff);
-      padding: 25px;
-      border-radius: 12px;
-      border-left: 4px solid var(--primary);
-      margin: 30px 0;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    
-    .analysis-text {
-      white-space: pre-wrap;
-      font-family: 'Roboto Mono', monospace;
-      line-height: 1.8;
-      color: #2c3e50;
-      font-size: 0.95em;
-    }
-    
-    footer {
-      margin-top: 50px;
-      text-align: center;
-      color: #666;
-      font-size: 0.9em;
-      padding: 20px;
-      border-top: 1px solid #eee;
-    }
-    
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(-20px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
+    body { font-family: Arial, sans-serif; margin:20px; color:#333; }
+    h1 { color:#2c3e50; }
+    h2 { border-bottom:2px solid #ddd; padding-bottom:5px; color:#34495e; }
+    table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+    th,td { padding:8px; text-align:left; }
+    th { background:#2980b9; color:#fff; }
+    tr:nth-child(even){ background:#f9f9f9; }
+    .charts { display:flex; gap:20px; margin-bottom:20px; }
+    .charts img{ max-width:45%; border:1px solid #ccc; padding:5px; }
+    .findings { background:#ecf0f1; padding:15px; border-radius:5px; }
+    .analysis { background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:20px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>📊 Learning Patterns Analysis</h1>
-    <div class="header-info">
-      <p><strong>Subject:</strong> {{ age }}-year-old in {{ country }} &bull; 
-         <strong>Date:</strong> {{ today }}</p>
-    </div>
+  <h1>🎯 Learning Patterns Analysis</h1>
+  <p><strong>Subject:</strong> 20-year-old Male in {{ country }} &bull;
+     <strong>Date:</strong> {{ today }}</p>
 
-    {% if chart1 and chart2 %}
-    <div class="charts">
-      <img src="{{ chart1 }}" alt="Learning Preferences">
-      <img src="{{ chart2 }}" alt="Study Habits">
-    </div>
-    {% endif %}
+  <h2>Executive Summary</h2>
+  <p>This report provides a data-driven overview of learning preferences, study habits,
+     mathematics proficiency, and regional benchmarks.</p>
 
-    <!-- Rest of the template sections remain similar but use updated classes -->
-    
-    <h2>6. AI Analysis</h2>
-    <div class="analysis-box">
-      <pre class="analysis-text">{{ analysis }}</pre>
-    </div>
-
-    <footer>
-      Report generated by KataChatBot AI • Confidential & Proprietary • {{ today }}
-    </footer>
+  {% if chart1 and chart2 %}
+  <div class="charts">
+    <img src="{{ chart1 }}" alt="Learning Preferences">
+    <img src="{{ chart2 }}" alt="Study Habits">
   </div>
+  {% endif %}
+
+  <h2>1. Learning Preferences</h2>
+  <table>
+    <tr><th>Mode</th><th>Percentage</th></tr>
+    {% for m,p in prefs.items() %}
+      <tr><td>{{ m }}</td><td>{{ p }}%</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>2. Study Habits</h2>
+  <table>
+    <tr><th>Habit</th><th>Percentage</th></tr>
+    {% for h,p in habits.items() %}
+      <tr><td>{{ h }}</td><td>{{ p }}%</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>3. Mathematics Proficiency</h2>
+  <table>
+    <tr><th>Topic</th><th>Local</th><th>Regional</th><th>Global</th></tr>
+    {% for topic, vals in math.items() %}
+      <tr>
+        <td>{{ topic }}</td>
+        <td>{{ vals.local }}%</td>
+        <td>{{ vals.regional or '–' }}</td>
+        <td>{{ vals.global    or '–' }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+
+  <h2>4. Regional Comparisons</h2>
+  <table>
+    <tr><th>Metric</th><th>SG</th><th>Other</th></tr>
+    {% for metric, vals in regional.items() %}
+      <tr><td>{{ metric }}</td><td>{{ vals.SG }}</td><td>{{ vals.Other }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>5. Top 3 Findings</h2>
+  <div class="findings">
+    <ol>{% for f in findings %}<li>{{ f }}</li>{% endfor %}</ol>
+  </div>
+
+  <h2>6. AI Analysis</h2>
+  <div class="analysis"><pre style="margin:0">{{ analysis }}</pre></div>
+
+  <footer style="margin-top:30px;font-size:0.8em;color:#777;">
+    Report generated by KataChatBot AI • Confidential & Proprietary
+  </footer>
 </body>
 </html>
-"""
+""",
+        today=datetime.today().strftime("%Y-%m-%d"),
+        country=country,
+        prefs=prefs,
+        habits=habits,
+        math=math,
+        regional=regional,
+        findings=findings,
+        chart1=chart1,
+        chart2=chart2,
+        analysis=analysis
+    )
 
-# —–––––––––––––––––––––––––––––––––––––––––––––
-# Updated Analyze Endpoint with New Charts
-# —–––––––––––––––––––––––––––––––––––––––––––––
+    return html, 200, {"Content-Type": "text/html"}
 
-@app.route("/analyze_name", methods=["POST"])
-def analyze_name():
-    # ... (Previous processing code remains the same)
-    
-    # Updated chart generation section
-    try:
-        chart1 = encode_fig_to_base64(create_bar_chart(prefs, "Learning Preferences"))
-        chart2 = encode_fig_to_base64(create_pie_chart(habits, "Study Habits"))
-    except Exception as e:
-        app.logger.error(f"Chart generation failed: {str(e)}", exc_info=True)
-        chart1 = chart2 = None
-
-    # ... (Rest of the endpoint code remains the same)
-
-    return render_template_string(HTML_TEMPLATE, ...)  # Use updated template
-
-# ... (Rest of the code remains the same)
+if __name__ == "__main__":
+    app.run(debug=True)
