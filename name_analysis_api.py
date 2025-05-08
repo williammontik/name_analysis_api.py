@@ -107,3 +107,41 @@ Format:
 **Learning Patterns Analysis for {age}-year-old {gender}s in {country}**
 
 1. [First Metric Name]:
+[Category 1] |||||||| XX%
+[Category 2] |||||||||||| YY%
+[Category 3] |||| ZZ%
+
+2. [Second Metric Name]:
+- Item A: XX%
+- Item B: YY%
+- Item C: ZZ%
+
+3. [Third Metric Name]:
+{gender} performance in [subject]:
+- Area 1: XX% (Regional: YY%)
+- Area 2: XX% (Global: YY%)
+
+Regional Comparisons:
+- Metric A: {country} XX% vs Region YY%
+- Metric B: {country} XX% vs Global YY%
+
+Top 3 Statistical Findings:
+1. Finding 1 (data-supported)
+2. Finding 2 (data-supported)
+3. Finding 3 (data-supported)
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        analysis = response.choices[0].message.content
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    clean = re.sub(r"<[^>]+>", "", analysis)
+    return jsonify({"analysis": clean})
+
+if __name__ == "__main__":
+    app.run(debug=True)
