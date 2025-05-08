@@ -140,7 +140,7 @@ Your child deserves more than average answers. Let’s build the learning path t
 
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="childpp2",  # Use your fine-tuned model here
             messages=[{"role": "user", "content": prompt}]
         )
         analysis = response.choices[0].message.content
