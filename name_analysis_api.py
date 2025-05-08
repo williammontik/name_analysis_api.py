@@ -1,6 +1,7 @@
 import os
-import random
+import re
 import smtplib
+import random
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from openai import OpenAI
@@ -69,6 +70,7 @@ def analyze_name():
     else:
         data = request.form
 
+    # Extract user data from the request
     name = data.get("name", "").strip()
     chinese_name = data.get("chinese_name", "").strip()
     gender = data.get("gender", "").strip()
@@ -83,11 +85,14 @@ def analyze_name():
 
     # ✅ Calculate age
     try:
-        day, month_str, year = dob.split()
-        month = datetime.strptime(month_str, "%B").month
-        birthdate = datetime(int(year), month, int(day))
-        today = datetime.today()
-        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+        if dob:
+            day, month_str, year = dob.split()
+            month = datetime.strptime(month_str, "%B").month
+            birthdate = datetime(int(year), month, int(day))
+            today = datetime.today()
+            age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+        else:
+            raise ValueError("Date of birth is missing or invalid.")
     except Exception as e:
         print(f"❌ Error calculating age: {e}")
         age = "Unknown"
