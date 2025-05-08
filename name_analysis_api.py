@@ -25,7 +25,7 @@ SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 # ✅ Email Function
-def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
     subject = "New KataChatBot User Submission"
     body = f"""
 🎯 New User Submission:
@@ -36,6 +36,7 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country)
 🎂 Date of Birth: {dob}
 🎯 Age: {age} years old
 🌍 Country: {country}
+💬 Referrer: {referrer}
 
 📞 Phone: {phone}
 📧 Email: {email}
@@ -69,6 +70,7 @@ def analyze_name():
     phone = data.get("phone", "").strip()
     email = data.get("email", "").strip()
     country = data.get("country", "").strip()
+    referrer = data.get("referrer", "").strip()
 
     if not name:
         return jsonify({"error": "No name provided"}), 400
@@ -86,7 +88,7 @@ def analyze_name():
 
     # ✅ Send email
     try:
-        send_email(name, chinese_name, gender, dob, age, phone, email, country)
+        send_email(name, chinese_name, gender, dob, age, phone, email, country, referrer)
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
@@ -111,6 +113,7 @@ Child Profile:
 - Parent's Email: {email}
 - Country: {country}
 - Age: {age}
+- Referrer: {referrer}
 
 AI Insight:
 Children aged {age} in {country} often face invisible crossroads — some grow curious and focused, while others start showing signs of detachment or learning fatigue.
