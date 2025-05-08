@@ -80,12 +80,6 @@ def generate_learning_report():
         return jsonify({"error": "Missing data for country, age, or gender."}), 400
 
     # ✅ Geographical and Gender-Based Data Insights
-    # Example: Data reflecting general trends for children in specific countries, age, and gender
-    # This data can be replaced with actual statistics if available
-    age_group = int(age)
-    gender_group = gender.lower()
-    
-    # Simulating learning trends data in percentage for different countries
     if country == "USA":
         data_improve = {"male": 72, "female": 78}
         data_struggle = {"male": 28, "female": 22}
@@ -93,13 +87,12 @@ def generate_learning_report():
         data_improve = {"male": 75, "female": 80}
         data_struggle = {"male": 25, "female": 20}
     else:
-        # Default case: Adjust for unknown countries
         data_improve = {"male": 70, "female": 76}
         data_struggle = {"male": 30, "female": 24}
     
     # Adjust data based on age group (you can fine-tune this)
-    improvement_percent = data_improve[gender_group]
-    struggle_percent = data_struggle[gender_group]
+    improvement_percent = data_improve[gender]
+    struggle_percent = data_struggle[gender]
 
     # Simulate seasonal effects (learning improvement during exam season, summer breaks, etc.)
     seasonal_factor = random.choice([0.05, 0.1, 0.15])  # Reflects seasonal changes in performance
@@ -124,7 +117,7 @@ def generate_learning_report():
     prompt = f"""
     Learning trends for children aged {age} in {country}:
 
-    In {country}, children of age group {age_group} (gender: {gender_group}) experience varying learning outcomes based on educational support, seasonal changes, and societal trends. Here's a breakdown of how children perform:
+    In {country}, children of age group {age} (gender: {gender}) experience varying learning outcomes based on educational support, seasonal changes, and societal trends. Here's a breakdown of how children perform:
 
     📊 **Our data shows** that:
     - Around {seasonal_improvement}% of children in {country} who receive proper guidance and support have experienced positive transformations: greater confidence, improved attention span, and more enthusiasm for school.
