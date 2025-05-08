@@ -2,6 +2,8 @@ import os
 import re
 import smtplib
 import random
+import matplotlib.pyplot as plt
+import numpy as np
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from openai import OpenAI
@@ -24,7 +26,7 @@ SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-# ✅ Email Function (Updated to include Referrer)
+# ✅ Email Function
 def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
     subject = "New KataChatBot User Submission"
     body = f"""
@@ -63,96 +65,91 @@ Your responses should focus on helping parents navigate challenges and support t
 """
 
 # ✅ API Endpoint
-@app.route("/analyze_name", methods=["POST"])
-def analyze_name():
+@app.route("/generate_learning_report", methods=["POST"])
+def generate_learning_report():
     if request.is_json:
         data = request.get_json()
     else:
         data = request.form
 
-    # Extract user data from the request
-    name = data.get("name", "").strip()
-    chinese_name = data.get("chinese_name", "").strip()
-    gender = data.get("gender", "").strip()
-    dob = data.get("dob", "").strip()
-    phone = data.get("phone", "").strip()
-    email = data.get("email", "").strip()
     country = data.get("country", "").strip()
-    referrer = data.get("referrer", "").strip()
+    age = data.get("age", "").strip()
+    gender = data.get("gender", "").strip()
 
-    if not name:
-        return jsonify({"error": "No name provided"}), 400
+    if not country or not age or not gender:
+        return jsonify({"error": "Missing data for country, age, or gender."}), 400
 
-    # ✅ Calculate age
-    try:
-        if dob:
-            day, month_str, year = dob.split()
-            month = datetime.strptime(month_str, "%B").month
-            birthdate = datetime(int(year), month, int(day))
-            today = datetime.today()
-            age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
-        else:
-            raise ValueError("Date of birth is missing or invalid.")
-    except Exception as e:
-        print(f"❌ Error calculating age: {e}")
-        age = "Unknown"
+    # ✅ Geographical and Gender-Based Data Insights
+    # Example: Data reflecting general trends for children in specific countries, age, and gender
+    # This data can be replaced with actual statistics if available
+    age_group = int(age)
+    gender_group = gender.lower()
+    
+    # Simulating learning trends data in percentage for different countries
+    if country == "USA":
+        data_improve = {"male": 72, "female": 78}
+        data_struggle = {"male": 28, "female": 22}
+    elif country == "Singapore":
+        data_improve = {"male": 75, "female": 80}
+        data_struggle = {"male": 25, "female": 20}
+    else:
+        # Default case: Adjust for unknown countries
+        data_improve = {"male": 70, "female": 76}
+        data_struggle = {"male": 30, "female": 24}
+    
+    # Adjust data based on age group (you can fine-tune this)
+    improvement_percent = data_improve[gender_group]
+    struggle_percent = data_struggle[gender_group]
 
-    # ✅ Send email with the referrer included
-    try:
-        send_email(name, chinese_name, gender, dob, age, phone, email, country, referrer)
-    except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+    # Simulate seasonal effects (learning improvement during exam season, summer breaks, etc.)
+    seasonal_improvement = improvement_percent * 1.1  # 10% improvement during school months
+    seasonal_struggle = struggle_percent * 0.9        # 10% less struggle during holiday breaks
 
-    # ✅ Smarter randomized stats
-    base_improve = random.randint(65, 80)
-    base_struggle = random.randint(30, 45)
-    if base_struggle >= base_improve - 5:
-        base_struggle = base_improve - random.randint(10, 15)
-    improved_percent = round(base_improve / 5) * 5
-    struggle_percent = round(base_struggle / 5) * 5
+    # Create a dynamic chart to represent the data
+    categories = ['Improvement (%)', 'Struggle (%)', 'Seasonal Improvement', 'Seasonal Struggle']
+    values = [improvement_percent, struggle_percent, seasonal_improvement, seasonal_struggle]
 
-    # ✅ OpenAI analysis
+    # Plotting the bar chart
+    fig, ax = plt.subplots()
+    ax.bar(categories, values, color=['green', 'red', 'blue', 'orange'])
+    ax.set_ylabel('Percentage (%)')
+    ax.set_title(f'Learning Trends for Children in {country} (Age: {age}, Gender: {gender.capitalize()})')
+
+    # Save the plot to a file and return the file path
+    chart_file_path = "/mnt/data/learning_trends_chart.png"
+    plt.savefig(chart_file_path)
+
+    # ✅ OpenAI analysis (country-wide trends)
     prompt = f"""
-    Child Profile:
-    - Full Name: {name}
-    - Chinese Name: {chinese_name}
-    - Gender: {gender}
-    - Date of Birth: {dob}
-    - Parent's Phone: {phone}
-    - Parent's Email: {email}
-    - Country: {country}
-    - Age: {age}
+    Learning trends for children aged {age} in {country}:
 
-    AI Insight:
-    Children aged {age} in {country} often face invisible crossroads — some grow curious and focused, while others start showing signs of detachment or learning fatigue.
+    In {country}, children of the age group {age_group} (gender: {gender_group}) experience varying learning outcomes based on educational support, cultural factors, and seasonal influences. Here's an overview of the trends:
 
-    📊 Our AI has identified that:
-    - Around {improved_percent}% of children in this age/gender/location profile who got timely, personalized help experienced a transformation: greater confidence, better attention span, and joyful participation in school.
-    - But about {struggle_percent}% of children who didn’t get targeted support slipped into patterns of frustration, resistance to learning, emotional withdrawal — sometimes unnoticed until it became serious.
+    📊 **Improvement with proper guidance**:
+    - Around {seasonal_improvement}% of children (gender: {gender_group}) improve their learning outcomes significantly with proper guidance and targeted support.
 
-    💡 This is not fear — it’s foresight.
+    📉 **Struggle due to lack of support**:
+    - Approximately {seasonal_struggle}% of children in this age/gender group face challenges due to insufficient educational support or lack of engagement.
 
-    Advice:
-    1. Spark Curiosity: Let them explore through art, music, nature, or experiments — things that make them ask more questions.
-    2. Give Structure: Routine builds safety. Focus games, light challenges, and time-blocked play can reshape attention span.
-    3. Emotional Coaching: Teach naming feelings, and encourage expression — children who feel seen will stay open to learning.
+    🗓️ **Seasonal Learning Variations**:
+    - During peak academic periods (such as exam seasons), learning improvement is observed to increase by around 10%.
+    - During summer or holiday breaks, the rate of struggle decreases by around 10% as children typically have more time for personal development and relaxation.
 
-    In {country}, we’ve also seen cultural tools (like traditional stories, values of diligence and filial piety, or expressive arts) play a major role in turning kids around. Use what’s already meaningful in your community.
+    💡 **What can parents do?**
+    1. Provide structured learning activities that can be adjusted throughout the year, focusing on curiosity and exploration.
+    2. Encourage emotional coaching and regular engagement to ensure children stay motivated and focused.
+    3. Utilize seasonal breaks for light but consistent learning to maintain their engagement without overloading them.
 
-    Final Advice:
-    Your child’s character today is only one version of their future. The biggest danger is assuming things will fix themselves.
-
-    That’s why we strongly recommend you speak directly to one of our real human learning specialists at @katachat007 (Telegram). We’ll zoom into your child’s specific personality, recommend the right type of tutor, and guide you through this age band with precision and heart.
-
-    Your child deserves more than average answers. Let’s build the learning path that fits them best — together.
+    **Final Advice**:
+    The learning behavior of children in {country} varies significantly depending on the time of the year and the support they receive. Parents should adapt their approach accordingly and make use of peak learning seasons to maximize their child’s development.
     """
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",  # Replace with your fine-tuned model if necessary
             messages=[
-                {"role": "system", "content": system_message},  # System instructions for tone and structure
-                {"role": "user", "content": prompt}            # User input (child's profile)
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
             ]
         )
         analysis = response.choices[0].message.content
@@ -161,7 +158,12 @@ def analyze_name():
 
     # ✅ Clean output
     clean = re.sub(r"<[^>]+>", "", analysis)
-    return jsonify({"analysis": clean})
+
+    # ✅ Return the final analysis and chart
+    return jsonify({
+        "analysis": clean,
+        "chart_url": chart_file_path
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
