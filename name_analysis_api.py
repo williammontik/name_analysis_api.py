@@ -1,3 +1,59 @@
+import os
+import re
+import smtplib
+import random
+from email.mime.text import MIMEText
+from flask import Flask, request, jsonify
+from openai import OpenAI
+from flask_cors import CORS
+from datetime import datetime
+
+# ✅ Initialize Flask App
+app = Flask(__name__)  # This was missing
+CORS(app)
+
+# ✅ OpenAI API Key
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OpenAI API key not set.")
+client = OpenAI(api_key=openai_api_key)
+
+# ✅ Email settings
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
+# ✅ Email Function
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country):
+    subject = "New KataChatBot User Submission"
+    body = f"""
+🎯 New User Submission:
+
+👤 Full Legal Name: {full_name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 Date of Birth: {dob}
+🎯 Age: {age} years old
+🌍 Country: {country}
+
+📞 Phone: {phone}
+📧 Email: {email}
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = SMTP_USERNAME
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        print("✅ Email sent successfully.")
+    except Exception as e:
+        print("❌ EMAIL ERROR:", e)
+
 # ✅ API Endpoint
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
@@ -96,3 +152,6 @@ Your child deserves more than average answers. Let’s build the learning path t
     # ✅ Clean output
     clean = re.sub(r"<[^>]+>", "", analysis)
     return jsonify({"analysis": clean})
+
+if __name__ == "__main__":
+    app.run(debug=True)
