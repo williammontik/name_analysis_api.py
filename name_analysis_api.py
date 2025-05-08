@@ -1,7 +1,6 @@
 import os
-import re
-import smtplib
 import random
+import smtplib
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from openai import OpenAI
@@ -55,6 +54,13 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
     except Exception as e:
         print("❌ EMAIL ERROR:", e)
 
+# ✅ System Instructions for OpenAI Assistant
+system_message = """
+You are an elite educational advisor AI trained on deep global datasets about children’s development and academic psychology. Speak warmly and emotionally, like a trusted friend who understands parental concerns. Mix data, storytelling, and practical advice.
+
+Your responses should focus on helping parents navigate challenges and support their children's development. When giving advice, include actionable steps based on the child's profile, such as curiosity, structure, emotional coaching, and cultural insights.
+"""
+
 # ✅ API Endpoint
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
@@ -102,46 +108,47 @@ def analyze_name():
 
     # ✅ OpenAI analysis
     prompt = f"""
-You are an elite educational advisor AI trained on deep global datasets about children’s development and academic psychology. Speak warmly and emotionally — like a trusted friend who understands parental concerns. Mix data, storytelling, and practical advice.
+    Child Profile:
+    - Full Name: {name}
+    - Chinese Name: {chinese_name}
+    - Gender: {gender}
+    - Date of Birth: {dob}
+    - Parent's Phone: {phone}
+    - Parent's Email: {email}
+    - Country: {country}
+    - Age: {age}
 
-Child Profile:
-- Full Name: {name}
-- Chinese Name: {chinese_name}
-- Gender: {gender}
-- Date of Birth: {dob}
-- Parent's Phone: {phone}
-- Parent's Email: {email}
-- Country: {country}
-- Age: {age}
+    AI Insight:
+    Children aged {age} in {country} often face invisible crossroads — some grow curious and focused, while others start showing signs of detachment or learning fatigue.
 
-AI Insight:
-Children aged {age} in {country} often face invisible crossroads — some grow curious and focused, while others start showing signs of detachment or learning fatigue.
+    📊 Our AI has identified that:
+    - Around {improved_percent}% of children in this age/gender/location profile who got timely, personalized help experienced a transformation: greater confidence, better attention span, and joyful participation in school.
+    - But about {struggle_percent}% of children who didn’t get targeted support slipped into patterns of frustration, resistance to learning, emotional withdrawal — sometimes unnoticed until it became serious.
 
-📊 Our AI has identified that:
-- Around {improved_percent}% of children in this age/gender/location profile who got timely, personalized help experienced a transformation: greater confidence, better attention span, and joyful participation in school.
-- But about {struggle_percent}% of children who didn’t get targeted support slipped into patterns of frustration, resistance to learning, emotional withdrawal — sometimes unnoticed until it became serious.
+    💡 This is not fear — it’s foresight.
 
-💡 This is not fear — it’s foresight.
+    Advice:
+    1. Spark Curiosity: Let them explore through art, music, nature, or experiments — things that make them ask more questions.
+    2. Give Structure: Routine builds safety. Focus games, light challenges, and time-blocked play can reshape attention span.
+    3. Emotional Coaching: Teach naming feelings, and encourage expression — children who feel seen will stay open to learning.
 
-Advice:
-1. Spark Curiosity: Let them explore through art, music, nature, or experiments — things that make them ask more questions.
-2. Give Structure: Routine builds safety. Focus games, light challenges, and time-blocked play can reshape attention span.
-3. Emotional Coaching: Teach naming feelings, and encourage expression — children who feel seen will stay open to learning.
+    In {country}, we’ve also seen cultural tools (like traditional stories, values of diligence and filial piety, or expressive arts) play a major role in turning kids around. Use what’s already meaningful in your community.
 
-In {country}, we’ve also seen cultural tools (like traditional stories, values of diligence and filial piety, or expressive arts) play a major role in turning kids around. Use what’s already meaningful in your community.
+    Final Advice:
+    Your child’s character today is only one version of their future. The biggest danger is assuming things will fix themselves.
 
-Final Advice:
-Your child’s character today is only one version of their future. The biggest danger is assuming things will fix themselves.
+    That’s why we strongly recommend you speak directly to one of our real human learning specialists at @katachat007 (Telegram). We’ll zoom into your child’s specific personality, recommend the right type of tutor, and guide you through this age band with precision and heart.
 
-That’s why we strongly recommend you speak directly to one of our real human learning specialists at @katachat007 (Telegram). We’ll zoom into your child’s specific personality, recommend the right type of tutor, and guide you through this age band with precision and heart.
-
-Your child deserves more than average answers. Let’s build the learning path that fits them best — together.
-"""
+    Your child deserves more than average answers. Let’s build the learning path that fits them best — together.
+    """
 
     try:
         response = client.chat.completions.create(
-            model="childpp2",  # Use your fine-tuned model here
-            messages=[{"role": "user", "content": prompt}]
+            model="gpt-3.5-turbo",  # Replace with your fine-tuned model if necessary
+            messages=[
+                {"role": "system", "content": system_message},  # System instructions for tone and structure
+                {"role": "user", "content": prompt}            # User input (child's profile)
+            ]
         )
         analysis = response.choices[0].message.content
     except Exception as e:
