@@ -102,8 +102,9 @@ def generate_learning_report():
     struggle_percent = data_struggle[gender_group]
 
     # Simulate seasonal effects (learning improvement during exam season, summer breaks, etc.)
-    seasonal_improvement = improvement_percent * 1.1  # 10% improvement during school months
-    seasonal_struggle = struggle_percent * 0.9        # 10% less struggle during holiday breaks
+    seasonal_factor = random.choice([0.05, 0.1, 0.15])  # Reflects seasonal changes in performance
+    seasonal_improvement = improvement_percent * (1 + seasonal_factor)
+    seasonal_struggle = struggle_percent * (1 + seasonal_factor)
 
     # Create a dynamic chart to represent the data
     categories = ['Improvement (%)', 'Struggle (%)', 'Seasonal Improvement', 'Seasonal Struggle']
@@ -115,30 +116,30 @@ def generate_learning_report():
     ax.set_ylabel('Percentage (%)')
     ax.set_title(f'Learning Trends for Children in {country} (Age: {age}, Gender: {gender.capitalize()})')
 
-    # Save the plot to a file and return the file path
-    chart_file_path = "/mnt/data/learning_trends_chart.png"
+    # Save the plot to a file and display it
+    chart_file_path = "learning_trends_chart.png"
     plt.savefig(chart_file_path)
 
     # ✅ OpenAI analysis (country-wide trends)
     prompt = f"""
     Learning trends for children aged {age} in {country}:
 
-    In {country}, children of the age group {age_group} (gender: {gender_group}) experience varying learning outcomes based on educational support, cultural factors, and seasonal influences. Here's an overview of the trends:
+    In {country}, children of age group {age_group} (gender: {gender_group}) experience varying learning outcomes based on educational support, seasonal changes, and societal trends. Here's a breakdown of how children perform:
 
-    📊 **Improvement with proper guidance**:
-    - Around {seasonal_improvement}% of children (gender: {gender_group}) improve their learning outcomes significantly with proper guidance and targeted support.
-
-    📉 **Struggle due to lack of support**:
-    - Approximately {seasonal_struggle}% of children in this age/gender group face challenges due to insufficient educational support or lack of engagement.
+    📊 **Our data shows** that:
+    - Around {seasonal_improvement}% of children in {country} who receive proper guidance and support have experienced positive transformations: greater confidence, improved attention span, and more enthusiasm for school.
+    - However, about {seasonal_struggle}% of children in this age/gender group face challenges due to insufficient educational support or lack of engagement.
 
     🗓️ **Seasonal Learning Variations**:
-    - During peak academic periods (such as exam seasons), learning improvement is observed to increase by around 10%.
-    - During summer or holiday breaks, the rate of struggle decreases by around 10% as children typically have more time for personal development and relaxation.
+    - During peak academic periods (such as exam seasons), children’s focus tends to increase by around 10%.
+    - In contrast, during summer or holiday breaks, the rate of struggle decreases by around 10% as children typically have more time for personal development and relaxation.
 
-    💡 **What can parents do?**
-    1. Provide structured learning activities that can be adjusted throughout the year, focusing on curiosity and exploration.
-    2. Encourage emotional coaching and regular engagement to ensure children stay motivated and focused.
-    3. Utilize seasonal breaks for light but consistent learning to maintain their engagement without overloading them.
+    💡 **This is not fear — it’s foresight**. By understanding these patterns, parents can make informed decisions about how to support their child’s learning journey throughout the year.
+
+    Advice for improving learning outcomes in {country}:
+    1. **Spark Curiosity**: Allow children to explore through art, music, nature, or experiments — things that make them ask more questions.
+    2. **Provide Structure**: Routine builds safety. Incorporate focus games, light challenges, and time-blocked play to reshape attention spans.
+    3. **Emotional Coaching**: Teach children to name and express their feelings — those who feel seen are more likely to stay open to learning.
 
     **Final Advice**:
     The learning behavior of children in {country} varies significantly depending on the time of the year and the support they receive. Parents should adapt their approach accordingly and make use of peak learning seasons to maximize their child’s development.
