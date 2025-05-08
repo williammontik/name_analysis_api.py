@@ -8,15 +8,15 @@ from flask import Flask, request, render_template_string
 from flask_cors import CORS
 from dateutil import parser
 
-# 1) Force Agg backend for headless servers
+# 1) Force Matplotlib to use Agg for headless servers
 import matplotlib
 matplotlib.use("Agg")
 
-# 2) Import pyplot and set style to ggplot
+# 2) Import pyplot and set ggplot style
 import matplotlib.pyplot as plt
 plt.style.use("ggplot")
 
-# (Optional) OpenAI import
+# (Optional) import OpenAI if you want live AI analysis
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -27,7 +27,6 @@ app.logger.setLevel(logging.DEBUG)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# — Helper to encode figures —
 def encode_fig_to_base64(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
@@ -36,38 +35,36 @@ def encode_fig_to_base64(fig):
     plt.close(fig)
     return f"data:image/png;base64,{data}"
 
-# — Main endpoint —
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
     payload = request.form if request.form else (request.get_json() or {})
-    name     = payload.get("name", "").strip() or "Unknown"
-    country  = payload.get("country", "").strip() or "Singapore"
+    name    = payload.get("name", "").strip() or "Unknown"
+    country = payload.get("country", "").strip() or "Singapore"
 
-    # Build & parse DOB
+    # Parse DOB
     dob_raw = payload.get("dob", "").strip()
     if not dob_raw:
         d = payload.get("dob_day","").strip()
         m = payload.get("dob_month","").strip()
         y = payload.get("dob_year","").strip()
         dob_raw = f"{d} {m} {y}".strip()
-
     try:
         parts = dob_raw.split()
-        if len(parts) == 3:
+        if len(parts)==3:
             dd, mon_str, yy = parts
             mon_idx = datetime.strptime(mon_str, "%B").month
             bd = datetime(int(yy), mon_idx, int(dd))
         else:
             bd = parser.parse(dob_raw, dayfirst=True)
         today = datetime.today()
-        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        age = today.year - bd.year - ((today.month, today.day)<(bd.month, bd.day))
     except Exception:
         app.logger.warning(f"Failed to parse DOB '{dob_raw}'", exc_info=True)
         age = "Unknown"
 
-    # Synthetic data
-    prefs = {"Auditory": 50, "Visual": 35, "Reading & Writing": 15}
-    habits= {"Studying Alone": 45, "Group Study": 30, "Online Study": 25}
+    # Synthetic stats
+    prefs = {"Auditory":50, "Visual":35, "Reading & Writing":15}
+    habits= {"Studying Alone":45, "Group Study":30, "Online Study":25}
     math  = {
       "Algebra":  {"local":70, "regional":60, "global":None},
       "Calculus": {"local":65, "regional":None, "global":55}
@@ -79,7 +76,7 @@ def analyze_name():
     findings = [
       f"{prefs['Auditory']}% prefer auditory learning.",
       f"Algebra local score: {math['Algebra']['local']}% vs regional {math['Algebra']['regional']}%.",
-      f"Singaporeans study {regional['Weekly Study Hours']['SG']} hrs/week vs {regional['Weekly Study Hours']['Other']} hrs regional."
+      f"SG study {regional['Weekly Study Hours']['SG']} hrs/week vs {regional['Weekly Study Hours']['Other']} hrs regional."
     ]
 
     # Generate charts
@@ -92,13 +89,14 @@ def analyze_name():
         chart1 = encode_fig_to_base64(fig1)
 
         fig2, ax2 = plt.subplots()
-        ax2.pie(habits.values(), labels=habits.keys(), autopct="%1.1f%%", startangle=140)
+        ax2.pie(habits.values(), labels=habits.keys(),
+                autopct="%1.1f%%", startangle=140)
         ax2.set_title("Study Habits")
         chart2 = encode_fig_to_base64(fig2)
     except Exception:
         app.logger.error("Chart generation failed", exc_info=True)
 
-    # Optional AI analysis with graceful fallback
+    # Optional AI analysis
     analysis = "⚠️ AI analysis currently unavailable."
     if client:
         try:
@@ -111,7 +109,7 @@ def analyze_name():
         except Exception:
             app.logger.warning("OpenAI call failed; using fallback.", exc_info=True)
 
-    # Render the final HTML
+    # Render HTML
     html = render_template_string("""
 <!DOCTYPE html>
 <html lang="en">
@@ -119,60 +117,52 @@ def analyze_name():
   <meta charset="UTF-8">
   <title>Learning Patterns Analysis</title>
   <style>
-    body { font-family: Arial, sans-serif; margin:20px; color:#333; }
-    h1 { color:#2c3e50; }
-    h2 { border-bottom:2px solid #ddd; padding-bottom:5px; color:#34495e; }
-    table { width:100%; border-collapse:collapse; margin-bottom:20px; }
-    th,td { padding:8px; text-align:left; }
-    th { background:#2980b9; color:#fff; }
-    tr:nth-child(even){ background:#f9f9f9; }
-    .charts { display:flex; gap:20px; margin-bottom:20px; }
-    .charts img{ max-width:45%; border:1px solid #ccc; padding:5px; }
-    .findings { background:#ecf0f1; padding:15px; border-radius:5px; }
-    .analysis { background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:20px; }
+    body{font-family:Arial,sans-serif;margin:20px;color:#333;}
+    h1{color:#2c3e50;} h2{border-bottom:2px solid #ddd;padding-bottom:5px;color:#34495e;}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+    th,td{padding:8px;text-align:left;} th{background:#2980b9;color:#fff;}
+    tr:nth-child(even){background:#f9f9f9;}
+    .charts{display:flex;gap:20px;margin-bottom:20px;}
+    .charts img{max-width:45%;border:1px solid #ccc;padding:5px;}
+    .findings{background:#ecf0f1;padding:15px;border-radius:5px;}
+    .analysis{background:#fff3cd;padding:15px;border-radius:5px;margin-bottom:20px;}
   </style>
 </head>
 <body>
   <h1>🎯 Learning Patterns Analysis</h1>
-  <p><strong>Subject:</strong> 20-year-old Male in {{ country }} &bull;
-     <strong>Date:</strong> {{ today }}</p>
+  <p><strong>Subject:</strong> 20-year-old Male in {{country}} • 
+     <strong>Date:</strong> {{today}}</p>
 
   <h2>Executive Summary</h2>
-  <p>This report provides a data-driven overview of learning preferences, study habits,
-     mathematics proficiency, and regional benchmarks.</p>
+  <p>Data-driven overview of learning preferences, study habits,
+     math proficiency, and regional benchmarks.</p>
 
   {% if chart1 and chart2 %}
   <div class="charts">
-    <img src="{{ chart1 }}" alt="Learning Preferences">
-    <img src="{{ chart2 }}" alt="Study Habits">
+    <img src="{{chart1}}" alt="Learning Preferences">
+    <img src="{{chart2}}" alt="Study Habits">
   </div>
   {% endif %}
 
   <h2>1. Learning Preferences</h2>
-  <table>
-    <tr><th>Mode</th><th>Percentage</th></tr>
-    {% for m,p in prefs.items() %}
-      <tr><td>{{ m }}</td><td>{{ p }}%</td></tr>
-    {% endfor %}
+  <table><tr><th>Mode</th><th>Percentage</th></tr>
+    {% for m,p in prefs.items() %}<tr><td>{{m}}</td><td>{{p}}%</td></tr>{% endfor %}
   </table>
 
   <h2>2. Study Habits</h2>
-  <table>
-    <tr><th>Habit</th><th>Percentage</th></tr>
-    {% for h,p in habits.items() %}
-      <tr><td>{{ h }}</td><td>{{ p }}%</td></tr>
-    {% endfor %}
+  <table><tr><th>Habit</th><th>Percentage</th></tr>
+    {% for h,p in habits.items() %}<tr><td>{{h}}</td><td>{{p}}%</td></tr>{% endfor %}
   </table>
 
   <h2>3. Mathematics Proficiency</h2>
   <table>
     <tr><th>Topic</th><th>Local</th><th>Regional</th><th>Global</th></tr>
-    {% for topic, vals in math.items() %}
+    {% for topic,vals in math.items() %}
       <tr>
-        <td>{{ topic }}</td>
-        <td>{{ vals.local }}%</td>
-        <td>{{ vals.regional or '–' }}</td>
-        <td>{{ vals.global    or '–' }}</td>
+        <td>{{topic}}</td>
+        <td>{{vals.local}}%</td>
+        <td>{{vals.regional or '–'}}</td>
+        <td>{{vals.global    or '–'}}</td>
       </tr>
     {% endfor %}
   </table>
@@ -180,18 +170,18 @@ def analyze_name():
   <h2>4. Regional Comparisons</h2>
   <table>
     <tr><th>Metric</th><th>SG</th><th>Other</th></tr>
-    {% for metric, vals in regional.items() %}
-      <tr><td>{{ metric }}</td><td>{{ vals.SG }}</td><td>{{ vals.Other }}</td></tr>
+    {% for mt,vals in regional.items() %}
+      <tr><td>{{mt}}</td><td>{{vals.SG}}</td><td>{{vals.Other}}</td></tr>
     {% endfor %}
   </table>
 
   <h2>5. Top 3 Findings</h2>
-  <div class="findings">
-    <ol>{% for f in findings %}<li>{{ f }}</li>{% endfor %}</ol>
-  </div>
+  <div class="findings"><ol>
+    {% for f in findings %}<li>{{f}}</li>{% endfor %}
+  </ol></div>
 
   <h2>6. AI Analysis</h2>
-  <div class="analysis"><pre style="margin:0">{{ analysis }}</pre></div>
+  <div class="analysis"><pre style="margin:0;">{{analysis}}</pre></div>
 
   <footer style="margin-top:30px;font-size:0.8em;color:#777;">
     Report generated by KataChatBot AI • Confidential & Proprietary
@@ -201,13 +191,10 @@ def analyze_name():
 """,
         today=datetime.today().strftime("%Y-%m-%d"),
         country=country,
-        prefs=prefs,
-        habits=habits,
-        math=math,
-        regional=regional,
+        prefs=prefs, habits=habits,
+        math=math, regional=regional,
         findings=findings,
-        chart1=chart1,
-        chart2=chart2,
+        chart1=chart1, chart2=chart2,
         analysis=analysis
     )
 
