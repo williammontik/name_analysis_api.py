@@ -3,4 +3,4 @@ openai
 flask-cors
 gunicorn
 matplotlib
-
+python-dateutil
