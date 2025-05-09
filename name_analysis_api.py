@@ -1,204 +1,177 @@
 import os
-import io
-import base64
-import logging
-from datetime import datetime
-
-from flask import Flask, request, render_template_string
+import re
+import smtplib
+import random
+from email.mime.text import MIMEText
+from flask import Flask, request, jsonify
 from flask_cors import CORS
+from datetime import datetime
 from dateutil import parser
-
-# 1) Force Matplotlib to use Agg for headless servers
-import matplotlib
-matplotlib.use("Agg")
-
-# 2) Import pyplot and set ggplot style
-import matplotlib.pyplot as plt
-plt.style.use("ggplot")
-
-# (Optional) import OpenAI if you want live AI analysis
-from openai import OpenAI
 
 app = Flask(__name__)
 CORS(app)
+
+# set logging level to DEBUG
+import logging
 app.logger.setLevel(logging.DEBUG)
 
-# — Configuration —
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+# OpenAI client setup (if you use it)
+from openai import OpenAI
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OpenAI API key not set.")
+client = OpenAI(api_key=openai_api_key)
 
-def encode_fig_to_base64(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    buf.seek(0)
-    data = base64.b64encode(buf.read()).decode("ascii")
-    plt.close(fig)
-    return f"data:image/png;base64,{data}"
+# SMTP setup
+SMTP_SERVER   = "smtp.gmail.com"
+SMTP_PORT     = 587
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
+    subject = "New KataChatBot User Submission"
+    body = f"""
+🎯 New User Submission:
+
+👤 Full Legal Name: {full_name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 Date of Birth: {dob}
+🎯 Age: {age} years old
+🌍 Country: {country}
+
+📞 Phone: {phone}
+📧 Email: {email}
+💬 Referrer: {referrer}
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"]    = SMTP_USERNAME
+    msg["To"]      = SMTP_USERNAME
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        app.logger.info("✅ Email sent successfully.")
+    except Exception as e:
+        app.logger.error("❌ EMAIL ERROR:", exc_info=e)
 
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
-    payload = request.form if request.form else (request.get_json() or {})
-    name    = payload.get("name", "").strip() or "Unknown"
-    country = payload.get("country", "").strip() or "Singapore"
+    data = request.get_json() if request.is_json else request.form
 
-    # Parse DOB
-    dob_raw = payload.get("dob", "").strip()
-    if not dob_raw:
-        d = payload.get("dob_day","").strip()
-        m = payload.get("dob_month","").strip()
-        y = payload.get("dob_year","").strip()
-        dob_raw = f"{d} {m} {y}".strip()
+    # collect fields
+    name         = data.get("name", "").strip()
+    chinese_name = data.get("chinese_name", "").strip()
+    gender       = data.get("gender", "").strip()
+    phone        = data.get("phone", "").strip()
+    email        = data.get("email", "").strip()
+    country      = data.get("country", "").strip()
+    referrer     = data.get("referrer", "").strip()
+
+    # build dob input from either combined or separate fields
+    day   = data.get("dob_day")
+    mon   = data.get("dob_month")
+    year  = data.get("dob_year")
+    if day and mon and year:
+        dob_input = f"{day} {mon} {year}"
+    else:
+        dob_input = data.get("dob", "").strip()
+
+    app.logger.debug(f"Raw DOB input: {dob_input!r}")
+
+    # parse and compute age
     try:
-        parts = dob_raw.split()
-        if len(parts)==3:
-            dd, mon_str, yy = parts
-            mon_idx = datetime.strptime(mon_str, "%B").month
-            bd = datetime(int(yy), mon_idx, int(dd))
+        # try strict "DD Month YYYY" first
+        parts = dob_input.split()
+        if len(parts) == 3:
+            d, mon_str, y = parts
+            month = datetime.strptime(mon_str, "%B").month
+            birthdate = datetime(int(y), month, int(d))
         else:
-            bd = parser.parse(dob_raw, dayfirst=True)
+            # fallback to dateutil parser for more flexibility
+            birthdate = parser.parse(dob_input, dayfirst=True)
+
         today = datetime.today()
-        age = today.year - bd.year - ((today.month, today.day)<(bd.month, bd.day))
-    except Exception:
-        app.logger.warning(f"Failed to parse DOB '{dob_raw}'", exc_info=True)
+        age = today.year - birthdate.year - (
+            (today.month, today.day) < (birthdate.month, birthdate.day)
+        )
+        app.logger.debug(f"Computed age: {age!r}")
+    except Exception as e:
+        app.logger.error(f"Error calculating age from {dob_input!r}", exc_info=e)
         age = "Unknown"
 
-    # Synthetic stats
-    prefs = {"Auditory":50, "Visual":35, "Reading & Writing":15}
-    habits= {"Studying Alone":45, "Group Study":30, "Online Study":25}
-    math  = {
-      "Algebra":  {"local":70, "regional":60, "global":None},
-      "Calculus": {"local":65, "regional":None, "global":55}
-    }
-    regional = {
-      "Weekly Study Hours":    {"SG":15, "Other":10},
-      "Homework Completion %": {"SG":85, "Other":75}
-    }
-    findings = [
-      f"{prefs['Auditory']}% prefer auditory learning.",
-      f"Algebra local score: {math['Algebra']['local']}% vs regional {math['Algebra']['regional']}%.",
-      f"SG study {regional['Weekly Study Hours']['SG']} hrs/week vs {regional['Weekly Study Hours']['Other']} hrs regional."
-    ]
-
-    # Generate charts
-    chart1 = chart2 = None
+    # send notification email
     try:
-        fig1, ax1 = plt.subplots()
-        ax1.bar(prefs.keys(), prefs.values())
-        ax1.set_title("Learning Preferences")
-        ax1.set_ylabel("Percentage (%)")
-        chart1 = encode_fig_to_base64(fig1)
+        send_email(name, chinese_name, gender, dob_input, age, phone, email, country, referrer)
+    except Exception as e:
+        app.logger.error("❌ Failed to send email:", exc_info=e)
 
-        fig2, ax2 = plt.subplots()
-        ax2.pie(habits.values(), labels=habits.keys(),
-                autopct="%1.1f%%", startangle=140)
-        ax2.set_title("Study Habits")
-        chart2 = encode_fig_to_base64(fig2)
-    except Exception:
-        app.logger.error("Chart generation failed", exc_info=True)
+    # prepare prompt and call OpenAI
+    base_improve  = random.randint(65, 80)
+    base_struggle = random.randint(30, 45)
+    if base_struggle >= base_improve - 5:
+        base_struggle = base_improve - random.randint(10, 15)
+    improved_percent  = round(base_improve / 5) * 5
+    struggle_percent  = round(base_struggle / 5) * 5
 
-    # Optional AI analysis
-    analysis = "⚠️ AI analysis currently unavailable."
-    if client:
-        try:
-            prompt = f"Generate a concise data report for a {age}-year-old male in {country}."
-            resp = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role":"user","content":prompt}]
-            )
-            analysis = resp.choices[0].message.content.strip()
-        except Exception:
-            app.logger.warning("OpenAI call failed; using fallback.", exc_info=True)
+    prompt = f"""
+Generate a statistical report on learning patterns for children aged {age}, gender {gender} in {country}.
 
-    # Render HTML
-    html = render_template_string("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Learning Patterns Analysis</title>
-  <style>
-    body{font-family:Arial,sans-serif;margin:20px;color:#333;}
-    h1{color:#2c3e50;} h2{border-bottom:2px solid #ddd;padding-bottom:5px;color:#34495e;}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-    th,td{padding:8px;text-align:left;} th{background:#2980b9;color:#fff;}
-    tr:nth-child(even){background:#f9f9f9;}
-    .charts{display:flex;gap:20px;margin-bottom:20px;}
-    .charts img{max-width:45%;border:1px solid #ccc;padding:5px;}
-    .findings{background:#ecf0f1;padding:15px;border-radius:5px;}
-    .analysis{background:#fff3cd;padding:15px;border-radius:5px;margin-bottom:20px;}
-  </style>
-</head>
-<body>
-  <h1>🎯 Learning Patterns Analysis</h1>
-  <p><strong>Subject:</strong> 20-year-old Male in {{country}} • 
-     <strong>Date:</strong> {{today}}</p>
+Requirements:
+1. Present only factual data in percentage/numerical form
+2. Include 3 text-based bar charts using markdown
+3. Compare with regional/global averages
+4. Highlight 3 key statistical findings
+5. No personalized advice or recommendations
+6. Use academic, data-focused language
 
-  <h2>Executive Summary</h2>
-  <p>Data-driven overview of learning preferences, study habits,
-     math proficiency, and regional benchmarks.</p>
+Format:
+**Learning Patterns Analysis for {age}-year-old {gender}s in {country}**
 
-  {% if chart1 and chart2 %}
-  <div class="charts">
-    <img src="{{chart1}}" alt="Learning Preferences">
-    <img src="{{chart2}}" alt="Study Habits">
-  </div>
-  {% endif %}
+1. [First Metric Name]:
+[Category 1] |||||||| XX%
+[Category 2] |||||||||||| YY%
+[Category 3] |||| ZZ%
 
-  <h2>1. Learning Preferences</h2>
-  <table><tr><th>Mode</th><th>Percentage</th></tr>
-    {% for m,p in prefs.items() %}<tr><td>{{m}}</td><td>{{p}}%</td></tr>{% endfor %}
-  </table>
+2. [Second Metric Name]:
+- Item A: XX%
+- Item B: YY%
+- Item C: ZZ%
 
-  <h2>2. Study Habits</h2>
-  <table><tr><th>Habit</th><th>Percentage</th></tr>
-    {% for h,p in habits.items() %}<tr><td>{{h}}</td><td>{{p}}%</td></tr>{% endfor %}
-  </table>
+3. [Third Metric Name]:
+{gender} performance in [subject]:
+- Area 1: XX% (Regional: YY%)
+- Area 2: XX% (Global: YY%)
 
-  <h2>3. Mathematics Proficiency</h2>
-  <table>
-    <tr><th>Topic</th><th>Local</th><th>Regional</th><th>Global</th></tr>
-    {% for topic,vals in math.items() %}
-      <tr>
-        <td>{{topic}}</td>
-        <td>{{vals.local}}%</td>
-        <td>{{vals.regional or '–'}}</td>
-        <td>{{vals.global    or '–'}}</td>
-      </tr>
-    {% endfor %}
-  </table>
+Regional Comparisons:
+- Metric A: {country} XX% vs Region YY%
+- Metric B: {country} XX% vs Global YY%
 
-  <h2>4. Regional Comparisons</h2>
-  <table>
-    <tr><th>Metric</th><th>SG</th><th>Other</th></tr>
-    {% for mt,vals in regional.items() %}
-      <tr><td>{{mt}}</td><td>{{vals.SG}}</td><td>{{vals.Other}}</td></tr>
-    {% endfor %}
-  </table>
+Top 3 Statistical Findings:
+1. Finding 1 (data-supported)
+2. Finding 2 (data-supported)
+3. Finding 3 (data-supported)
+"""
 
-  <h2>5. Top 3 Findings</h2>
-  <div class="findings"><ol>
-    {% for f in findings %}<li>{{f}}</li>{% endfor %}
-  </ol></div>
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        analysis = response.choices[0].message.content
+    except Exception as e:
+        app.logger.error("OpenAI error", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
-  <h2>6. AI Analysis</h2>
-  <div class="analysis"><pre style="margin:0;">{{analysis}}</pre></div>
+    clean = re.sub(r"<[^>]+>", "", analysis)
 
-  <footer style="margin-top:30px;font-size:0.8em;color:#777;">
-    Report generated by KataChatBot AI • Confidential & Proprietary
-  </footer>
-</body>
-</html>
-""",
-        today=datetime.today().strftime("%Y-%m-%d"),
-        country=country,
-        prefs=prefs, habits=habits,
-        math=math, regional=regional,
-        findings=findings,
-        chart1=chart1, chart2=chart2,
-        analysis=analysis
-    )
-
-    return html, 200, {"Content-Type": "text/html"}
+    return jsonify({
+        "age_computed": age,
+        "analysis": clean
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
