@@ -3,11 +3,19 @@ import io
 import base64
 import logging
 import random
-import re
 from datetime import datetime
-from flask import Flask, request, jsonify
+
+from flask import Flask, request, render_template_string
 from flask_cors import CORS
 from dateutil import parser
+
+# Force Agg backend on the server
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.style.use("ggplot")
+
+# (Optional) remove OpenAI entirely if you don’t need live AI text
 from openai import OpenAI
 from email.mime.text import MIMEText
 import smtplib
@@ -16,54 +24,42 @@ app = Flask(__name__)
 CORS(app)
 app.logger.setLevel(logging.DEBUG)
 
-# ── OpenAI setup ────────────────────────────────────────────
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY not set.")
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# ── SMTP setup ──────────────────────────────────────────────
+# —–––––––––––––––––––––
+# SMTP (email) setup
+# —–––––––––––––––––––––
 SMTP_SERVER   = "smtp.gmail.com"
 SMTP_PORT     = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
-    subject = "New KataChatBot User Submission"
-    body = f"""
-🎯 New User Submission:
-
-👤 Full Legal Name: {full_name}
-🈶 Chinese Name: {chinese_name}
-⚧️ Gender: {gender}
-🎂 Date of Birth: {dob}
-🎯 Age: {age} years old
-🌍 Country: {country}
-
-📞 Phone: {phone}
-📧 Email: {email}
-💬 Referrer: {referrer}
-"""
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"]   = SMTP_USERNAME
-    msg["To"]     = SMTP_USERNAME
+def send_email(full_name, dob, age, phone, email, country, referrer):
+    msg = MIMEText(f"""
+New Submission:
+Name: {full_name}
+DOB: {dob}
+Age: {age}
+Phone: {phone}
+Email: {email}
+Country: {country}
+Referrer: {referrer}
+""")
+    msg["Subject"] = "KataChatBot Submission"
+    msg["From"]    = SMTP_USERNAME
+    msg["To"]      = SMTP_USERNAME
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-        app.logger.info("✅ Email sent successfully.")
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as s:
+            s.starttls()
+            s.login(SMTP_USERNAME, SMTP_PASSWORD)
+            s.send_message(msg)
+        app.logger.info("Email sent")
     except Exception:
-        app.logger.error("❌ EMAIL ERROR", exc_info=True)
+        app.logger.error("Email failed", exc_info=True)
 
-# ── Simple SVG animation stub ───────────────────────────────
-def generate_animation(data):
-    """
-    Returns an inline SVG animation (pulsing circle) as a string.
-    You can replace this with any SVG/GIF/HTML5 <canvas> animation you like.
-    """
-    svg = """
+# —–––––––––––––––––––––
+# Inline SVG animation
+# —–––––––––––––––––––––
+def get_svg_animation():
+    return """
 <svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
   <circle cx="60" cy="60" r="20" fill="#3498db">
     <animate attributeName="r"
@@ -75,72 +71,146 @@ def generate_animation(data):
   </circle>
 </svg>
 """
-    return svg.strip()
 
-# ── Main endpoint ───────────────────────────────────────────
+# —–––––––––––––––––––––
+# Helper: Matplotlib → Base64
+# —–––––––––––––––––––––
+def fig_to_base64(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    data = base64.b64encode(buf.read()).decode("ascii")
+    plt.close(fig)
+    return f"data:image/png;base64,{data}"
+
+# —–––––––––––––––––––––
+# Main route
+# —–––––––––––––––––––––
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
-    # 1) Parse input
-    data = request.get_json() if request.is_json else request.form
-    name         = data.get("name","").strip()
-    chinese_name = data.get("chinese_name","").strip()
-    gender       = data.get("gender","").strip()
-    phone        = data.get("phone","").strip()
-    email_addr   = data.get("email","").strip()
-    country      = data.get("country","").strip()
-    referrer     = data.get("referrer","").strip()
+    form = request.form
 
-    # 2) Build & parse DOB
-    day, mon, year = data.get("dob_day"), data.get("dob_month"), data.get("dob_year")
-    if day and mon and year:
-        dob_raw = f"{day} {mon} {year}"
-    else:
-        dob_raw = data.get("dob","").strip()
+    # 1) Parse
+    name     = form.get("name", "") or "Unknown"
+    phone    = form.get("phone", "")
+    email    = form.get("email", "")
+    country  = form.get("country", "Singapore")
+    referrer = form.get("referrer", "")
 
+    # 2) DOB → age
+    dob = form.get("dob") or f"{form.get('dob_day','')} {form.get('dob_month','')} {form.get('dob_year','')}"
     try:
-        parts = dob_raw.split()
-        if len(parts) == 3:
-            d, m_str, y = parts
-            m = datetime.strptime(m_str, "%B").month
-            bd = datetime(int(y), m, int(d))
+        parts = dob.split()
+        if len(parts)==3:
+            d, m, y = parts
+            m_idx = datetime.strptime(m, "%B").month
+            bd = datetime(int(y), m_idx, int(d))
         else:
-            bd = parser.parse(dob_raw, dayfirst=True)
+            bd = parser.parse(dob, dayfirst=True)
         today = datetime.today()
-        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        age = today.year - bd.year - ((today.month, today.day)<(bd.month, bd.day))
     except Exception:
-        app.logger.error(f"Error calculating age from {dob_raw!r}", exc_info=True)
         age = "Unknown"
 
-    # 3) Send email
-    send_email(name, chinese_name, gender, dob_raw, age, phone, email_addr, country, referrer)
+    # 3) Send email (optional)
+    send_email(name, dob, age, phone, email, country, referrer)
 
-    # 4) AI analysis
-    prompt = f"Generate a concise statistical report for a {age}-year-old {gender} in {country}."
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role":"user","content":prompt}]
-        )
-        analysis = resp.choices[0].message.content
-    except Exception:
-        app.logger.error("OpenAI error", exc_info=True)
-        analysis = "⚠️ AI analysis currently unavailable."
+    # 4) Synthetic data
+    prefs = {"Auditory":50, "Visual":35, "Reading & Writing":15}
+    habits= {"Alone":45, "Group":30, "Online":25}
+    math  = {"Algebra":(70,60,None), "Calculus":(65,None,55)}
+    regional = {"Study Hours":(15,10), "Homework %":(85,75)}
+    findings = [
+        f"{prefs['Auditory']}% prefer auditory learning.",
+        f"Algebra: {math['Algebra'][0]}% vs regional {math['Algebra'][1]}%.",
+        f"{regional['Study Hours'][0]} hrs/week vs {regional['Study Hours'][1]} regional."
+    ]
 
-    clean = re.sub(r"<[^>]+>", "", analysis)
+    # 5) Charts
+    fig1, ax1 = plt.subplots()
+    ax1.bar(prefs.keys(), prefs.values())
+    ax1.set_title("Learning Preferences")
+    chart1 = fig_to_base64(fig1)
 
-    # 5) Generate animation safely
-    try:
-        animation = generate_animation(data)
-    except Exception:
-        app.logger.error("Animation generation failed", exc_info=True)
-        animation = None
+    fig2, ax2 = plt.subplots()
+    ax2.pie(habits.values(), labels=habits.keys(), autopct="%1.1f%%", startangle=140)
+    ax2.set_title("Study Habits")
+    chart2 = fig_to_base64(fig2)
 
-    # 6) Return JSON
-    return jsonify({
-        "age_computed": age,
-        "analysis": clean,
-        "animation": animation
-    })
+    # 6) SVG animation
+    svg_anim = get_svg_animation()
+
+    # 7) Render HTML
+    return render_template_string("""
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Learning Patterns</title>
+<style>
+  body{font-family:Arial,sans-serif;margin:20px;color:#333}
+  h1{color:#2c3e50} h2{border-bottom:2px solid #ddd;padding:5px;color:#34495e}
+  table{width:100%;border-collapse:collapse;margin:10px 0}
+  th,td{padding:8px;text-align:left} th{background:#2980b9;color:#fff}
+  tr:nth-child(even){background:#f9f9f9}
+  .charts{display:flex;gap:20px;margin:20px 0}
+  .charts img{max-width:45%;border:1px solid #ccc;padding:5px}
+  .anim{margin:20px 0}
+  .findings{background:#ecf0f1;padding:15px;border-radius:5px}
+</style>
+</head><body>
+  <h1>🎯 Learning Patterns Analysis</h1>
+  <p><strong>Name:</strong> {{name}} • <strong>Age:</strong> {{age}} • 
+     <strong>Country:</strong> {{country}}</p>
+
+  <div class="anim">{{ svg_anim|safe }}</div>
+
+  <div class="charts">
+    <img src="{{chart1}}" alt="Prefs">
+    <img src="{{chart2}}" alt="Habits">
+  </div>
+
+  <h2>1. Learning Preferences</h2>
+  <table><tr><th>Mode</th><th>%</th></tr>
+    {% for m,p in prefs.items() %}
+      <tr><td>{{m}}</td><td>{{p}}%</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>2. Study Habits</h2>
+  <table><tr><th>Habit</th><th>%</th></tr>
+    {% for h,p in habits.items() %}
+      <tr><td>{{h}}</td><td>{{p}}%</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>3. Math Proficiency</h2>
+  <table><tr><th>Subject</th><th>Local</th><th>Regional</th><th>Global</th></tr>
+    {% for sub,(l,r,g) in math.items() %}
+      <tr><td>{{sub}}</td><td>{{l}}%</td><td>{{r or '–'}}%</td><td>{{g or '–'}}%</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>4. Regional Comparisons</h2>
+  <table><tr><th>Metric</th><th>SG</th><th>Other</th></tr>
+    {% for m,(s,o) in regional.items() %}
+      <tr><td>{{m}}</td><td>{{s}}</td><td>{{o}}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>5. Top Findings</h2>
+  <div class="findings"><ol>
+    {% for f in findings %}<li>{{f}}</li>{% endfor %}
+  </ol></div>
+
+  <footer style="margin-top:30px;font-size:0.8em;color:#777;">
+    Generated by KataChatBot AI
+  </footer>
+</body></html>
+""",
+    name=name, age=age, country=country,
+    prefs=prefs, habits=habits, math=math,
+    regional=regional, findings=findings,
+    chart1=chart1, chart2=chart2,
+    svg_anim=svg_anim
+)
 
 if __name__ == "__main__":
     app.run(debug=True)
