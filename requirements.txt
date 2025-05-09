@@ -1,6 +1,5 @@
-flask
-openai
+Flask>=2.2
 flask-cors
-gunicorn
-matplotlib
+openai
 python-dateutil
+gunicorn
