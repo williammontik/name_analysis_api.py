@@ -1,8 +1,3 @@
-8 May 11.32 pm Github copy
-
-
-
-
 import os
 import re
 import smtplib
