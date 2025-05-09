@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Learning Patterns Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .chart-container { width: 45%; display: inline-block; vertical-align: top; }
+  </style>
+</head>
+<body>
+  <h1>Learning Patterns Dashboard</h1>
+
+  <form id="dataForm">
+    <!-- you can add real inputs here; for demo we'll skip -->
+    <button type="submit">Load Data</button>
+  </form>
+
+  <div class="chart-container">
+    <canvas id="studyTimeChart"></canvas>
+  </div>
+  <div class="chart-container">
+    <canvas id="learningStyleChart"></canvas>
+  </div>
+  <div style="width:90%; margin-top:2rem;">
+    <canvas id="mathPerfChart"></canvas>
+  </div>
+
+  <h2>Key Findings</h2>
+  <ul id="findings"></ul>
+
+  <script>
+    document.getElementById('dataForm').onsubmit = e => {
+      e.preventDefault();
+      fetch('/analyze_name', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          name: "Test User",
+          chinese_name: "测试",
+          gender: "Female",
+          dob: "01 January 2005",
+          phone: "12345678",
+          email: "test@example.com",
+          country: "Singapore",
+          referrer: "Website"
+        })
+      })
+      .then(r=>r.json())
+      .then(data=>{
+        // Clear previous
+        document.getElementById('findings').innerHTML = "";
+
+        // Findings
+        data.top_findings.forEach(f=>{
+          let li = document.createElement('li');
+          li.textContent = f;
+          document.getElementById('findings').append(li);
+        });
+
+        // Helper to build bar charts
+        function buildChart(ctxId, labels, values, title){
+          new Chart(document.getElementById(ctxId), {
+            type: 'bar',
+            data: { labels, datasets: [{ label: title, data: values }] },
+            options: {
+              responsive: true,
+              animation: { duration: 1500 },
+              scales: { y: { beginAtZero:true, max:100 } }
+            }
+          });
+        }
+
+        buildChart(
+          'studyTimeChart',
+          data.metrics.study_time.labels,
+          data.metrics.study_time.values,
+          'Time Spent Studying (%)'
+        );
+        buildChart(
+          'learningStyleChart',
+          data.metrics.learning_styles.labels,
+          data.metrics.learning_styles.values,
+          'Preferred Learning Style (%)'
+        );
+
+        // Math performance with 3 datasets
+        new Chart(document.getElementById('mathPerfChart'), {
+          type: 'bar',
+          data: {
+            labels: data.metrics.math_performance.subjects,
+            datasets: [
+              { label:'Local Score', data: data.metrics.math_performance.local },
+              { label:'Regional Avg', data: data.metrics.math_performance.regional },
+              { label:'Global Avg', data: data.metrics.math_performance.global }
+            ]
+          },
+          options: {
+            responsive: true,
+            animation: { duration: 1500 },
+            scales: { y: { beginAtZero:true, max:100 } }
+          }
+        });
+      });
+    };
+  </script>
+</body>
+</html>
