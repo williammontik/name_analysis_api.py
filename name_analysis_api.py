@@ -1,10 +1,72 @@
+import os
+import re
+import smtplib
+import random
+import logging
+from datetime import datetime
+from dateutil import parser
+from email.mime.text import MIMEText
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from openai import OpenAI
+
+# ── Flask Setup ─────────────────────────────────────────────────────────────
+app = Flask(__name__)              # <-- must come before @app.route
+CORS(app)
+app.logger.setLevel(logging.DEBUG)
+
+# ── OpenAI Client ────────────────────────────────────────────────────────────
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+client = OpenAI(api_key=openai_api_key)
+
+# ── SMTP Setup ───────────────────────────────────────────────────────────────
+SMTP_SERVER   = "smtp.gmail.com"
+SMTP_PORT     = 587
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+if not SMTP_PASSWORD:
+    app.logger.warning("SMTP_PASSWORD is not set; emails may fail.")
+
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
+    subject = "New KataChatBot Submission"
+    body = f"""
+🎯 New User Submission:
+
+👤 Full Name: {full_name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 DOB: {dob}
+🕑 Age: {age}
+🌍 Country: {country}
+
+📞 Phone: {phone}
+📧 Email: {email}
+💬 Referrer: {referrer}
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"]    = SMTP_USERNAME
+    msg["To"]      = SMTP_USERNAME
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        app.logger.info("✅ Email sent successfully.")
+    except Exception:
+        app.logger.error("❌ Email sending failed.", exc_info=True)
+
 # ── Analysis Endpoint ────────────────────────────────────────────────────────
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
     data = request.get_json() if request.is_json else request.form
 
     try:
-        # 1) Collect fields (unchanged)…
+        # 1) Collect fields
         name         = data.get("name", "").strip()
         chinese_name = data.get("chinese_name", "").strip()
         gender       = data.get("gender", "").strip()
@@ -13,62 +75,88 @@ def analyze_name():
         country      = data.get("country", "").strip()
         referrer     = data.get("referrer", "").strip()
 
-        # 2) Reconstruct DOB string (unchanged)…
-        day  = data.get("dob_day")
-        mon  = data.get("dob_month")
-        year = data.get("dob_year")
-        if day and mon and year:
-            # we'll parse these three separately below
-            dob_day_str   = day
-            dob_month_str = mon
-            dob_year_str  = year
+        # 2) DOB parts
+        day_str   = data.get("dob_day")
+        mon_str   = data.get("dob_month")
+        year_str  = data.get("dob_year")
+
+        if day_str and mon_str and year_str:
+            # strip any '月'
+            month_key = mon_str.rstrip('月')
+            try:
+                month = int(month_key)
+            except ValueError:
+                import calendar
+                month = list(calendar.month_name).index(month_key)
+            day  = int(day_str)
+            year = int(year_str)
+            birthdate = datetime(year, month, day)
         else:
-            # fallback to free‐form parser
-            dob_input = data.get("dob", "").strip()
-            parts = dob_input.split()
-            # slightly modified below if someone passes English names…
-            if len(parts) == 3:
-                dob_day_str, dob_month_str, dob_year_str = parts
-            else:
-                # let dateutil handle more exotic formats
-                birthdate = parser.parse(dob_input, dayfirst=True)
-                dob_day_str   = str(birthdate.day)
-                dob_month_str = str(birthdate.month)
-                dob_year_str  = str(birthdate.year)
+            # fallback free‐form parser
+            birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
 
-        app.logger.debug(f"Parsing DOB: day={dob_day_str!r}, month={dob_month_str!r}, year={dob_year_str!r}")
-
-        # 3) Parse birthdate & compute age (UPDATED)
-        # Strip any trailing '月' and convert to integer:
-        month_key = dob_month_str.rstrip('月')
-        # If someone passed a full English month name, try that too:
-        try:
-            month = int(month_key)
-        except ValueError:
-            # fallback: parse English month names (e.g. "February")
-            import calendar
-            month = list(calendar.month_name).index(month_key)
-        day   = int(dob_day_str)
-        year  = int(dob_year_str)
-        birthdate = datetime(year, month, day)
-
+        # compute age
         today = datetime.today()
         age = today.year - birthdate.year - (
             (today.month, today.day) < (birthdate.month, birthdate.day)
         )
         app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
 
-        # 4) Notify by email (unchanged)…
+        # 3) Optional notification
         send_email(name, chinese_name, gender, birthdate.date(), age, phone, email, country, referrer)
 
-        # 5) …rest of your logic remains the same…
-        # generate metrics, call OpenAI, build JSON response
+        # 4) Build AI prompt & metrics (unchanged)
+        base_improve  = random.randint(65, 80)
+        base_struggle = random.randint(30, 45)
+        if base_struggle >= base_improve - 5:
+            base_struggle = base_improve - random.randint(10, 15)
+        improved_percent  = round(base_improve / 5) * 5
+        struggle_percent  = round(base_struggle / 5) * 5
+
+        prompt = f"""
+Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
+Requirements:
+1. Only factual percentages
+2. Include 3 markdown bar‐charts
+3. Compare regional/global
+4. Highlight 3 key findings
+5. No personalized advice
+6. Academic style
+"""
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
+
+        metrics = [
+            {
+                "title":  "Learning Preferences",
+                "labels": ["Visual", "Auditory", "Kinesthetic"],
+                "values": [improved_percent, struggle_percent, 5]
+            },
+            {
+                "title":  "Study Habits",
+                "labels": ["Regular Study", "Group Study", "Alone"],
+                "values": [70, 30, 60]
+            },
+            {
+                "title":  "Math Performance",
+                "labels": ["Algebra", "Geometry"],
+                "values": [improved_percent, 70]
+            }
+        ]
 
         return jsonify({
             "age_computed": age,
-            # …
+            "analysis":     analysis,
+            "metrics":      metrics
         })
 
     except Exception as e:
         app.logger.error("❌ Exception in /analyze_name", exc_info=True)
         return jsonify({ "error": str(e) }), 500
+
+# ── Run Locally ─────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    app.run(debug=True)
