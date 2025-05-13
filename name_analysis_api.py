@@ -9,20 +9,20 @@ from email.mime.text import MIMEText
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
 
 # ── Flask Setup ─────────────────────────────────────────────────────────────
-app = Flask(__name__)              # <-- must come before @app.route
+app = Flask(__name__)
 CORS(app)
 app.logger.setLevel(logging.DEBUG)
 
 # ── OpenAI Client ────────────────────────────────────────────────────────────
+from openai import OpenAI
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
 client = OpenAI(api_key=openai_api_key)
 
-# ── SMTP Setup ───────────────────────────────────────────────────────────────
+# ── SMTP Setup (for your notification email) ─────────────────────────────────
 SMTP_SERVER   = "smtp.gmail.com"
 SMTP_PORT     = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
@@ -75,37 +75,36 @@ def analyze_name():
         country      = data.get("country", "").strip()
         referrer     = data.get("referrer", "").strip()
 
-        # 2) DOB parts
-        day_str   = data.get("dob_day")
-        mon_str   = data.get("dob_month")
-        year_str  = data.get("dob_year")
-
-        if day_str and mon_str and year_str:
-            # strip any '月'
-            month_key = mon_str.rstrip('月')
-            try:
-                month = int(month_key)
-            except ValueError:
-                import calendar
-                month = list(calendar.month_name).index(month_key)
-            day  = int(day_str)
-            year = int(year_str)
-            birthdate = datetime(year, month, day)
+        # 2) Reconstruct DOB
+        day  = data.get("dob_day")
+        mon  = data.get("dob_month")
+        year = data.get("dob_year")
+        if day and mon and year:
+            dob_input = f"{day} {mon} {year}"
         else:
-            # fallback free‐form parser
-            birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
+            dob_input = data.get("dob", "").strip()
 
-        # compute age
+        app.logger.debug(f"DOB input: {dob_input!r}")
+
+        # 3) Parse birthdate & compute age
+        parts = dob_input.split()
+        if len(parts) == 3:
+            d, mon_str, y = parts
+            month = datetime.strptime(mon_str, "%B").month
+            birthdate = datetime(int(y), month, int(d))
+        else:
+            birthdate = parser.parse(dob_input, dayfirst=True)
+
         today = datetime.today()
         age = today.year - birthdate.year - (
             (today.month, today.day) < (birthdate.month, birthdate.day)
         )
-        app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
+        app.logger.debug(f"Computed age: {age}")
 
-        # 3) Optional notification
-        send_email(name, chinese_name, gender, birthdate.date(), age, phone, email, country, referrer)
+        # 4) Notify by email (optional)
+        send_email(name, chinese_name, gender, dob_input, age, phone, email, country, referrer)
 
-        # 4) Build AI prompt & metrics (unchanged)
+        # 5) Generate percentages for charts
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -113,6 +112,7 @@ def analyze_name():
         improved_percent  = round(base_improve / 5) * 5
         struggle_percent  = round(base_struggle / 5) * 5
 
+        # 6) Build your AI prompt
         prompt = f"""
 Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
 Requirements:
@@ -127,8 +127,10 @@ Requirements:
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
-        analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
+        analysis = response.choices[0].message.content
+        clean = re.sub(r"<[^>]+>", "", analysis)
 
+        # 7) Build structured metrics for Chart.js
         metrics = [
             {
                 "title":  "Learning Preferences",
@@ -147,9 +149,10 @@ Requirements:
             }
         ]
 
+        # 8) Return combined JSON
         return jsonify({
             "age_computed": age,
-            "analysis":     analysis,
+            "analysis":     clean,
             "metrics":      metrics
         })
 
