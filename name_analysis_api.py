@@ -74,34 +74,30 @@ def analyze_name():
         email        = data.get("email", "").strip()
         country      = data.get("country", "").strip()
         referrer     = data.get("referrer", "").strip()
+        lang         = data.get("lang", "en").lower()
 
         # 2) Parse DOB
         day_str   = data.get("dob_day")
         mon_str   = data.get("dob_month")
         year_str  = data.get("dob_year")
-
         if day_str and mon_str and year_str:
-            # Handle numeric month, English name, or Chinese name
             mon_key = mon_str.strip()
-            #  Chinese month mapping
             chinese_months = {
                 "一月":1, "二月":2, "三月":3, "四月":4,
                 "五月":5, "六月":6, "七月":7, "八月":8,
-                "九月":9, "十月":10, "十一月":11, "十二月":12
+                "九月":9, "十月":10, "十一月":11,"十二月":12
             }
             if mon_key.isdigit():
                 month = int(mon_key)
             elif mon_key in chinese_months:
                 month = chinese_months[mon_key]
             else:
-                # try English full month name
                 month = datetime.strptime(mon_key, "%B").month
 
             day  = int(day_str)
             year = int(year_str)
             birthdate = datetime(year, month, day)
         else:
-            # fallback: free‐form parser
             birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
 
         # compute age
@@ -111,11 +107,23 @@ def analyze_name():
         )
         app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
 
-        # 3) Notification email
+        # 3) Email notification
         send_email(name, chinese_name, gender, birthdate.date(), age, phone, email, country, referrer)
 
-        # 4) Build AI prompt
-        prompt = f"""
+        # 4) Build prompt based on lang
+        if lang == "zh":
+            prompt = f"""
+请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
+要求：
+1. 只给出百分比数据
+2. 在文本中用 Markdown 语法给出 3 个“柱状图”示例
+3. 对比区域/全球趋势
+4. 突出 3 个关键发现
+5. 不要个性化建议
+6. 学术风格
+"""
+        else:
+            prompt = f"""
 Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
 Requirements:
 1. Only factual percentages
@@ -125,13 +133,15 @@ Requirements:
 5. No personalized advice
 6. Academic style
 """
+
+        # 5) Call OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
 
-        # 5) Prepare metrics
+        # 6) Metrics for charts
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -157,7 +167,7 @@ Requirements:
             }
         ]
 
-        # 6) Return JSON
+        # 7) Return combined JSON
         return jsonify({
             "age_computed": age,
             "analysis":     analysis,
