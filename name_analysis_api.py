@@ -1,9 +1,12 @@
 import os
 import re
+import smtplib
 import random
 import logging
 from datetime import datetime
 from dateutil import parser
+from email.mime.text import MIMEText
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
@@ -19,85 +22,188 @@ if not openai_api_key:
     raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
 client = OpenAI(api_key=openai_api_key)
 
-# ── Helper: send email (unchanged from your children code) ────────────────────
-def send_email(*args, **kwargs):
-    # your existing send_email implementation here
-    pass
+# ── SMTP Setup ───────────────────────────────────────────────────────────────
+SMTP_SERVER   = "smtp.gmail.com"
+SMTP_PORT     = 587
+SMTP_USERNAME = "kata.chatbot@gmail.com"
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+if not SMTP_PASSWORD:
+    app.logger.warning("SMTP_PASSWORD is not set; emails may fail.")
 
-# ── /analyze_name Endpoint (Children) ─────────────────────────────────────────
+def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
+    subject = "New KataChatBot Submission"
+    body = f"""
+🎯 New User Submission:
+
+👤 Full Name: {full_name}
+🈶 Chinese Name: {chinese_name}
+⚧️ Gender: {gender}
+🎂 DOB: {dob}
+🕑 Age: {age}
+🌍 Country: {country}
+
+📞 Phone: {phone}
+📧 Email: {email}
+💬 Referrer: {referrer}
+"""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"]    = SMTP_USERNAME
+    msg["To"]      = SMTP_USERNAME
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        app.logger.info("✅ Email sent successfully.")
+    except Exception:
+        app.logger.error("❌ Email sending failed.", exc_info=True)
+
+# ── Analysis Endpoint (Children) ─────────────────────────────────────────────
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
-    try:
-        data = request.get_json(force=True)
-        app.logger.info(f"[analyze_name] payload: {data}")
+    data = request.get_json() if request.is_json else request.form
 
-        # 1) parse DOB & compute age (your existing logic)
-        day_str  = data.get("dob_day")
-        mon_str  = data.get("dob_month")
-        year_str = data.get("dob_year")
+    try:
+        # 1) Collect fields
+        name         = data.get("name", "").strip()
+        chinese_name = data.get("chinese_name", "").strip()
+        gender       = data.get("gender", "").strip()
+        phone        = data.get("phone", "").strip()
+        email_addr   = data.get("email", "").strip()
+        country      = data.get("country", "").strip()
+        referrer     = data.get("referrer", "").strip()
+        lang         = data.get("lang", "en").lower()
+
+        # 2) Parse DOB
+        day_str   = data.get("dob_day")
+        mon_str   = data.get("dob_month")
+        year_str  = data.get("dob_year")
         if day_str and mon_str and year_str:
-            month = int(mon_str) if mon_str.isdigit() else datetime.strptime(mon_str, "%B").month
+            chinese_months = {
+                "一月":1, "二月":2, "三月":3, "四月":4,
+                "五月":5, "六月":6, "七月":7, "八月":8,
+                "九月":9, "十月":10, "十一月":11, "十二月":12
+            }
+            if mon_str.isdigit():
+                month = int(mon_str)
+            elif mon_str in chinese_months:
+                month = chinese_months[mon_str]
+            else:
+                month = datetime.strptime(mon_str, "%B").month
+
             birthdate = datetime(int(year_str), month, int(day_str))
         else:
             birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
+
+        # compute age
         today = datetime.today()
-        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
-
-        # 2) send email (optional)
-        # send_email(...)
-
-        # 3) build prompt & call OpenAI
-        gender  = data.get("gender", "")
-        country = data.get("country", "")
-        prompt = (
-            f"Generate a statistical report on learning patterns for children aged {age}, "
-            f"gender {gender}, in {country}.\n"
-            "Requirements:\n"
-            "1. Only factual percentages\n"
-            "2. Include 3 markdown bar‐charts\n"
-            "3. Compare regional/global\n"
-            "4. Highlight 3 key findings\n"
-            "5. No personalized advice\n"
-            "6. Academic style\n"
+        age = today.year - birthdate.year - (
+            (today.month, today.day) < (birthdate.month, birthdate.day)
         )
+        app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
+
+        # 3) Email notification
+        send_email(name, chinese_name, gender, birthdate.date(), age,
+                   phone, email_addr, country, referrer)
+
+        # 4) Build prompt based on lang
+        if lang == "zh":
+            prompt = f"""
+请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
+要求：
+1. 只给出百分比数据
+2. 在文本中用 Markdown 语法给出 3 个“柱状图”示例
+3. 对比区域/全球趋势
+4. 突出 3 个关键发现
+5. 不要个性化建议
+6. 学术风格
+"""
+        elif lang == "tw":
+            prompt = f"""
+請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
+要求：
+1. 只給出百分比數據
+2. 在文本中用 Markdown 语法给出 3 个「柱狀圖」示例
+3. 比較區域／全球趨勢
+4. 突出 3 個關鍵發現
+5. 不要個性化建議
+6. 學術風格
+"""
+        else:
+            prompt = f"""
+Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
+Requirements:
+1. Only factual percentages
+2. Include 3 markdown bar‐charts
+3. Compare regional/global
+4. Highlight 3 key findings
+5. No personalized advice
+6. Academic style
+"""
+
+        # 5) Call OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role":"user","content":prompt}]
+            messages=[{"role": "user", "content": prompt}]
         )
         analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
 
-        # 4) dummy metrics (or your real stats)
-        base_ok  = random.randint(65, 80)
-        base_bad = max(0, random.randint(30, 45))
-        ok_pct    = round(base_ok/5)*5
-        bad_pct   = round(base_bad/5)*5
-        metrics = [
-            {
-                "title":  "Learning Preferences",
-                "labels": ["Visual", "Auditory", "Kinesthetic"],
-                "values": [ok_pct, bad_pct, 100 - ok_pct - bad_pct]
-            },
-            {
-                "title":  "Study Habits",
-                "labels": ["Regular Study", "Group Study", "Solo Study"],
-                "values": [70, 30, 60]
-            },
-            {
-                "title":  "Math Performance",
-                "labels": ["Algebra", "Geometry"],
-                "values": [ok_pct, 70]
-            }
-        ]
+        # 6) Metrics for charts
+        base_improve  = random.randint(65, 80)
+        base_struggle = random.randint(30, 45)
+        if base_struggle >= base_improve - 5:
+            base_struggle = base_improve - random.randint(10, 15)
+        improved_percent  = round(base_improve / 5) * 5
+        struggle_percent  = round(base_struggle / 5) * 5
 
+        if lang == "tw":
+            metrics = [
+                {
+                    "title":  "學習偏好",
+                    "labels": ["視覺", "聽覺", "動手"],
+                    "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
+                },
+                {
+                    "title":  "學習習慣",
+                    "labels": ["定期學習", "小組學習", "獨自學習"],
+                    "values": [70, 30, 60]
+                },
+                {
+                    "title":  "數學表現",
+                    "labels": ["代數", "幾何"],
+                    "values": [improved_percent, 70]
+                }
+            ]
+        else:
+            metrics = [
+                {
+                    "title":  "Learning Preferences",
+                    "labels": ["Visual", "Auditory", "Kinesthetic"],
+                    "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
+                },
+                {
+                    "title":  "Study Habits",
+                    "labels": ["Regular Study", "Group Study", "Alone"],
+                    "values": [70, 30, 60]
+                },
+                {
+                    "title":  "Math Performance",
+                    "labels": ["Algebra", "Geometry"],
+                    "values": [improved_percent, 70]
+                }
+            ]
+
+        # 7) Return combined JSON
         return jsonify({
             "metrics": metrics,
             "analysis": analysis
         })
 
     except Exception as e:
-        app.logger.exception("Error in /analyze_name")
-        return jsonify({"error": str(e)}), 500
-
+        app.logger.error("❌ Exception in /analyze_name", exc_info=True)
+        return jsonify({ "error": str(e) }), 500
 
 # ── /boss_analyze Endpoint (Managers) ─────────────────────────────────────────
 @app.route("/boss_analyze", methods=["POST"])
@@ -106,21 +212,20 @@ def boss_analyze():
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
 
-        # You can replace this with a real OpenAI prompt like above,
-        # but for now we return matching dummy data:
+        # Dummy manager data (replace with your OpenAI logic later)
         dummy_metrics = [
             {
-                "title":  "Leadership Effectiveness",
+                "title": "Leadership Effectiveness",
                 "labels": ["Vision", "Execution", "Empathy"],
                 "values": [75, 60, 85]
             },
             {
-                "title":  "Team Engagement",
+                "title": "Team Engagement",
                 "labels": ["Motivation", "Collaboration", "Trust"],
                 "values": [70, 65, 80]
             },
             {
-                "title":  "Communication Skills",
+                "title": "Communication Skills",
                 "labels": ["Clarity", "Listening", "Feedback"],
                 "values": [80, 70, 75]
             }
@@ -141,7 +246,6 @@ def boss_analyze():
         app.logger.exception("Error in /boss_analyze")
         return jsonify({"error": str(e)}), 500
 
-
 # ── Run Locally ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run(debug=True)
