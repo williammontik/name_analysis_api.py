@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
+import json
 
 # ── Flask Setup ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -60,12 +61,13 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
     except Exception:
         app.logger.error("❌ Email sending failed.", exc_info=True)
 
-# ── Analysis Endpoint (Children) ─────────────────────────────────────────────
+# ── /analyze_name Endpoint (Children) ─────────────────────────────────────────
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
-    data = request.get_json() if request.is_json else request.form
-
+    data = request.get_json(force=True)
     try:
+        app.logger.info(f"[analyze_name] payload: {data}")
+
         # 1) Collect fields
         name         = data.get("name", "").strip()
         chinese_name = data.get("chinese_name", "").strip()
@@ -92,7 +94,6 @@ def analyze_name():
                 month = chinese_months[mon_str]
             else:
                 month = datetime.strptime(mon_str, "%B").month
-
             birthdate = datetime(int(year_str), month, int(day_str))
         else:
             birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
@@ -105,8 +106,8 @@ def analyze_name():
         app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
 
         # 3) Email notification
-        send_email(name, chinese_name, gender, birthdate.date(), age,
-                   phone, email_addr, country, referrer)
+        send_email(name, chinese_name, gender, birthdate.date(),
+                   age, phone, email_addr, country, referrer)
 
         # 4) Build prompt based on lang
         if lang == "zh":
@@ -125,7 +126,7 @@ def analyze_name():
 請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
 要求：
 1. 只給出百分比數據
-2. 在文本中用 Markdown 语法给出 3 个「柱狀圖」示例
+2. 在文本中用 Markdown 语法给出 3 個「柱狀圖」示例
 3. 比較區域／全球趨勢
 4. 突出 3 個關鍵發現
 5. 不要個性化建議
@@ -146,7 +147,7 @@ Requirements:
         # 5) Call OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role":"user","content":prompt}]
         )
         analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
 
@@ -158,52 +159,30 @@ Requirements:
         improved_percent  = round(base_improve / 5) * 5
         struggle_percent  = round(base_struggle / 5) * 5
 
-        if lang == "tw":
-            metrics = [
-                {
-                    "title":  "學習偏好",
-                    "labels": ["視覺", "聽覺", "動手"],
-                    "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
-                },
-                {
-                    "title":  "學習習慣",
-                    "labels": ["定期學習", "小組學習", "獨自學習"],
-                    "values": [70, 30, 60]
-                },
-                {
-                    "title":  "數學表現",
-                    "labels": ["代數", "幾何"],
-                    "values": [improved_percent, 70]
-                }
-            ]
-        else:
-            metrics = [
-                {
-                    "title":  "Learning Preferences",
-                    "labels": ["Visual", "Auditory", "Kinesthetic"],
-                    "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
-                },
-                {
-                    "title":  "Study Habits",
-                    "labels": ["Regular Study", "Group Study", "Alone"],
-                    "values": [70, 30, 60]
-                },
-                {
-                    "title":  "Math Performance",
-                    "labels": ["Algebra", "Geometry"],
-                    "values": [improved_percent, 70]
-                }
-            ]
+        metrics = [
+            {
+                "title": "Learning Preferences" if lang=="en" else "學習偏好",
+                "labels": ["Visual", "Auditory", "Kinesthetic"] if lang=="en" else ["視覺","聽覺","動手"],
+                "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
+            },
+            {
+                "title": "Study Habits" if lang=="en" else "學習習慣",
+                "labels": ["Regular Study","Group Study","Solo Study"] if lang=="en" else ["定期學習","小組學習","獨自學習"],
+                "values": [70,30,60]
+            },
+            {
+                "title": "Math Performance" if lang=="en" else "數學表現",
+                "labels": ["Algebra","Geometry"] if lang=="en" else ["代數","幾何"],
+                "values": [improved_percent, 70]
+            }
+        ]
 
-        # 7) Return combined JSON
-        return jsonify({
-            "metrics": metrics,
-            "analysis": analysis
-        })
+        return jsonify({"metrics":metrics,"analysis":analysis})
 
     except Exception as e:
-        app.logger.error("❌ Exception in /analyze_name", exc_info=True)
-        return jsonify({ "error": str(e) }), 500
+        app.logger.exception("Error in /analyze_name")
+        return jsonify({"error":str(e)}), 500
+
 
 # ── /boss_analyze Endpoint (Managers) ─────────────────────────────────────────
 @app.route("/boss_analyze", methods=["POST"])
@@ -212,40 +191,56 @@ def boss_analyze():
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
 
-        # Dummy manager data (replace with your OpenAI logic later)
-        dummy_metrics = [
-            {
-                "title": "Leadership Effectiveness",
-                "labels": ["Vision", "Execution", "Empathy"],
-                "values": [75, 60, 85]
-            },
-            {
-                "title": "Team Engagement",
-                "labels": ["Motivation", "Collaboration", "Trust"],
-                "values": [70, 65, 80]
-            },
-            {
-                "title": "Communication Skills",
-                "labels": ["Clarity", "Listening", "Feedback"],
-                "values": [80, 70, 75]
-            }
-        ]
-        dummy_analysis = (
-            f"Here’s a quick analysis for {data.get('memberName')} ({data.get('position')}):\n\n"
-            "- Strong Vision and Empathy; consider boosting Execution.\n"
-            "- Team shows high Trust but needs more Collaboration.\n"
-            "- Communication is solid, with room to improve Feedback."
-        )
+        # 1) Extract form fields
+        name      = data.get("memberName", "Unknown")
+        position  = data.get("position", "Staff")
+        challenge = data.get("challenge", "")
+        focus     = data.get("focus", "")
+        country   = data.get("country", "")
 
-        return jsonify({
-            "metrics": dummy_metrics,
-            "analysis": dummy_analysis
-        })
+        # 2) Build prompt for JSON output with regional & global comparisons
+        prompt = f"""
+You are an expert organizational psychologist.
+Generate a detailed performance report for a team member named "{name}",
+working as "{position}", who faces this key challenge:
+"{challenge}". Their preferred development focus is "{focus}", and they are located in "{country}".
+
+Requirements:
+1. Return exactly three bar-chart metrics in JSON, each comparing:
+   - Individual score
+   - Regional average
+   - Global average
+   Example item:
+   {{
+     "title":"Leadership",
+     "labels":["Individual","Regional Avg","Global Avg"],
+     "values":[75,65,70]
+   }}
+2. Provide a 150–200 word narrative in the "analysis" field that:
+   - Highlights their top strength vs. region/global
+   - Identifies their biggest gap
+   - Offers three actionable next steps
+3. Return only a single JSON object with keys "metrics" (array) and "analysis" (string).
+"""
+
+        # 3) Call OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role":"user","content":prompt}]
+        )
+        raw = response.choices[0].message.content.strip()
+        app.logger.debug(f"[boss_analyze] raw output: {raw}")
+
+        # 4) Parse as JSON
+        report = json.loads(raw)
+
+        return jsonify(report)
 
     except Exception as e:
         app.logger.exception("Error in /boss_analyze")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error":str(e)}), 500
+
 
 # ── Run Locally ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0")
