@@ -122,6 +122,17 @@ def analyze_name():
 5. 不要个性化建议
 6. 学术风格
 """
+        elif lang == "tw":
+            prompt = f"""
+請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
+要求：
+1. 只給出百分比數據
+2. 在文本中用 Markdown 語法給出 3 個「柱狀圖」示例
+3. 比較區域／全球趨勢
+4. 突出 3 個關鍵發現
+5. 不要個性化建議
+6. 學術風格
+"""
         else:
             prompt = f"""
 Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
