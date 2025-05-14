@@ -160,23 +160,42 @@ Requirements:
         improved_percent  = round(base_improve / 5) * 5
         struggle_percent  = round(base_struggle / 5) * 5
 
-        metrics = [
-            {
-                "title":  "Learning Preferences",
-                "labels": ["Visual", "Auditory", "Kinesthetic"],
-                "values": [improved_percent, struggle_percent, 5]
-            },
-            {
-                "title":  "Study Habits",
-                "labels": ["Regular Study", "Group Study", "Alone"],
-                "values": [70, 30, 60]
-            },
-            {
-                "title":  "Math Performance",
-                "labels": ["Algebra", "Geometry"],
-                "values": [improved_percent, 70]
-            }
-        ]
+        if lang == "tw":
+            metrics = [
+                {
+                    "title":  "學習偏好",
+                    "labels": ["視覺", "聽覺", "動手"],
+                    "values": [improved_percent, struggle_percent, 5]
+                },
+                {
+                    "title":  "學習習慣",
+                    "labels": ["定期學習", "小組學習", "獨自學習"],
+                    "values": [70, 30, 60]
+                },
+                {
+                    "title":  "數學表現",
+                    "labels": ["代數", "幾何"],
+                    "values": [improved_percent, 70]
+                }
+            ]
+        else:
+            metrics = [
+                {
+                    "title":  "Learning Preferences",
+                    "labels": ["Visual", "Auditory", "Kinesthetic"],
+                    "values": [improved_percent, struggle_percent, 5]
+                },
+                {
+                    "title":  "Study Habits",
+                    "labels": ["Regular Study", "Group Study", "Alone"],
+                    "values": [70, 30, 60]
+                },
+                {
+                    "title":  "Math Performance",
+                    "labels": ["Algebra", "Geometry"],
+                    "values": [improved_percent, 70]
+                }
+            ]
 
         # 7) Return combined JSON
         return jsonify({
