@@ -11,18 +11,18 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
 
-# ── Flask App Setup ───────────────────────────────
+# ── Flask Setup ─────────────────────────────
 app = Flask(__name__)
 CORS(app)
 app.logger.setLevel(logging.DEBUG)
 
-# ── OpenAI Setup ──────────────────────────────────
+# ── OpenAI Setup ─────────────────────────────
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
     raise RuntimeError("OPENAI_API_KEY environment variable not set.")
 client = OpenAI(api_key=openai_api_key)
 
-# ── SMTP Email Setup ──────────────────────────────
+# ── SMTP Setup ───────────────────────────────
 SMTP_SERVER   = "smtp.gmail.com"
 SMTP_PORT     = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
@@ -48,8 +48,8 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
 """
     msg = MIMEText(body)
     msg["Subject"] = subject
-    msg["From"] = SMTP_USERNAME
-    msg["To"] = SMTP_USERNAME
+    msg["From"]    = SMTP_USERNAME
+    msg["To"]      = SMTP_USERNAME
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
@@ -60,113 +60,15 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
     except Exception:
         app.logger.error("❌ Email sending failed.", exc_info=True)
 
-# ── CHILDREN ENDPOINT (/analyze_name) ─────────────
-@app.route("/analyze_name", methods=["POST"])
-def analyze_name():
-    data = request.get_json(force=True)
-    try:
-        app.logger.info(f"[analyze_name] payload: {data}")
-
-        name         = data.get("name", "").strip()
-        chinese_name = data.get("chinese_name", "").strip()
-        gender       = data.get("gender", "").strip()
-        phone        = data.get("phone", "").strip()
-        email        = data.get("email", "").strip()
-        country      = data.get("country", "").strip()
-        referrer     = data.get("referrer", "").strip()
-        lang         = data.get("lang", "en").lower()
-
-        day_str  = data.get("dob_day")
-        mon_str  = data.get("dob_month")
-        year_str = data.get("dob_year")
-
-        chinese_months = {
-            "一月":1, "二月":2, "三月":3, "四月":4,
-            "五月":5, "六月":6, "七月":7, "八月":8,
-            "九月":9, "十月":10, "十一月":11, "十二月":12
-        }
-        if mon_str.isdigit():
-            month = int(mon_str)
-        elif mon_str in chinese_months:
-            month = chinese_months[mon_str]
-        else:
-            month = datetime.strptime(mon_str, "%B").month
-
-        birthdate = datetime(int(year_str), month, int(day_str))
-        today = datetime.today()
-        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
-
-        send_email(name, chinese_name, gender, birthdate.date(), age, phone, email, country, referrer)
-
-        if lang == "zh":
-            prompt = f"""请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
-要求：
-1. 只给出百分比数据
-2. 在文本中用 Markdown 语法给出 3 个“柱状图”示例
-3. 对比区域/全球趋势
-4. 突出 3 个关键发现
-5. 不要个性化建议
-6. 学术风格"""
-        elif lang == "tw":
-            prompt = f"""請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
-要求：
-1. 只給出百分比數據
-2. 在文本中用 Markdown 语法給出 3 個「柱狀圖」示例
-3. 比較區域／全球趨勢
-4. 突出 3 個關鍵發現
-5. 不要個性化建議
-6. 學術風格"""
-        else:
-            prompt = f"""Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
-Requirements:
-1. Only factual percentages
-2. Include 3 markdown bar‐charts
-3. Compare regional/global
-4. Highlight 3 key findings
-5. No personalized advice
-6. Academic style"""
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
-
-        base_improve  = 70
-        base_struggle = 40
-
-        metrics = [
-            {
-                "title": "Learning Preferences" if lang=="en" else "學習偏好",
-                "labels": ["Visual", "Auditory", "Kinesthetic"] if lang=="en" else ["視覺","聽覺","動手"],
-                "values": [base_improve, base_struggle, 100 - base_improve - base_struggle]
-            },
-            {
-                "title": "Study Habits" if lang=="en" else "學習習慣",
-                "labels": ["Regular Study", "Group Study", "Solo Study"] if lang=="en" else ["定期學習","小組學習","獨自學習"],
-                "values": [70, 30, 60]
-            },
-            {
-                "title": "Math Performance" if lang=="en" else "數學表現",
-                "labels": ["Algebra", "Geometry"] if lang=="en" else ["代數","幾何"],
-                "values": [base_improve, 70]
-            }
-        ]
-
-        return jsonify({"metrics": metrics, "analysis": analysis})
-
-    except Exception as e:
-        app.logger.exception("Error in /analyze_name")
-        return jsonify({"error": str(e)}), 500
-
-# ── BOSS ENDPOINT (/boss_analyze) ────────────────
+# ── /boss_analyze Endpoint (Managers) ───────────────
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
     try:
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
 
-        name       = data.get("memberName", "").strip()
+        # 1) Extract form fields
+        name       = data.get("memberName", "Unknown").strip()
         position   = data.get("position", "").strip()
         department = data.get("department", "").strip()
         experience = data.get("experience", "").strip()
@@ -177,7 +79,7 @@ def boss_analyze():
         email      = data.get("email", "").strip()
         referrer   = data.get("referrer", "").strip()
 
-        # Age from DOB
+        # 2) Parse DOB → compute age
         day_str  = data.get("dob_day", "")
         mon_str  = data.get("dob_month", "")
         year_str = data.get("dob_year", "")
@@ -190,6 +92,7 @@ def boss_analyze():
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
+        # 3) Build GPT Prompt with structured markdown instruction
         prompt = f"""
 You are an expert organizational psychologist.
 
@@ -237,14 +140,27 @@ List 3 practical recommendations based on the challenge and desired focus area.
   - Regional: 68%
   - Global: 72%
 
-Return only a valid JSON object structured like:
-{{
-  "metrics": [...],
+Return only a valid JSON object like:
+{
+  "metrics": [
+    {
+      "title": "Communication",
+      "labels": ["Segment Avg", "Regional Avg", "Global Avg"],
+      "values": [75, 68, 72]
+    },
+    {
+      "title": "Problem Solving",
+      "labels": ["Segment Avg", "Regional Avg", "Global Avg"],
+      "values": [60, 65, 70]
+    }
+  ],
   "analysis": "markdown report text here"
-}}
-Do not include any explanation or text outside the JSON object.
+}
+
+Do not include any explanation or markdown outside this JSON object.
 """
 
+        # 4) Call OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
@@ -252,17 +168,23 @@ Do not include any explanation or text outside the JSON object.
         raw = response.choices[0].message.content.strip()
         app.logger.debug(f"[boss_analyze] GPT raw: {raw}")
 
-        # Safe fallback JSON decoding
+        # 5) Parse as JSON with comma-fix fallback
         try:
             report = json.loads(raw)
         except json.JSONDecodeError:
+            app.logger.warning("Initial JSON parsing failed. Attempting auto-fix...")
             json_start = raw.find("{")
             json_end = raw.rfind("}")
             if json_start != -1 and json_end != -1:
                 safe_json = raw[json_start:json_end+1]
-                report = json.loads(safe_json)
+                fixed_json = re.sub(r"\}\s*\{", "},{", safe_json)
+                try:
+                    report = json.loads(fixed_json)
+                except Exception as fix_err:
+                    app.logger.error("Auto-fix failed to decode JSON.", exc_info=True)
+                    return jsonify({"error": "AI response is not valid JSON after auto-fix."}), 500
             else:
-                raise ValueError("GPT response is not a valid JSON block.")
+                return jsonify({"error": "AI response did not contain valid JSON block."}), 500
 
         return jsonify(report)
 
@@ -270,6 +192,6 @@ Do not include any explanation or text outside the JSON object.
         app.logger.exception("Error in /boss_analyze")
         return jsonify({"error": str(e)}), 500
 
-# ── Run App Locally ───────────────────────────────
+# ── Run App Locally ─────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
