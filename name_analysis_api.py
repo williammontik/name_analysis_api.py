@@ -67,7 +67,6 @@ def analyze_name():
     try:
         app.logger.info(f"[analyze_name] payload: {data}")
 
-        # 1) Parse fields
         name         = data.get("name", "").strip()
         chinese_name = data.get("chinese_name", "").strip()
         gender       = data.get("gender", "").strip()
@@ -99,7 +98,6 @@ def analyze_name():
 
         send_email(name, chinese_name, gender, birthdate.date(), age, phone, email, country, referrer)
 
-        # 2) Prompt
         if lang == "zh":
             prompt = f"""请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
 要求：
@@ -161,14 +159,13 @@ Requirements:
         app.logger.exception("Error in /analyze_name")
         return jsonify({"error": str(e)}), 500
 
-# ── BOSS ENDPOINT (markdown report version) ────────
+# ── BOSS ENDPOINT (/boss_analyze) ────────────────
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
     try:
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
 
-        # 1) Extract fields
         name       = data.get("memberName", "").strip()
         position   = data.get("position", "").strip()
         department = data.get("department", "").strip()
@@ -180,7 +177,7 @@ def boss_analyze():
         email      = data.get("email", "").strip()
         referrer   = data.get("referrer", "").strip()
 
-        # 2) Compute age from DOB
+        # Age from DOB
         day_str  = data.get("dob_day", "")
         mon_str  = data.get("dob_month", "")
         year_str = data.get("dob_year", "")
@@ -193,7 +190,6 @@ def boss_analyze():
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
-        # 3) Prompt for GPT structured report
         prompt = f"""
 You are an expert organizational psychologist.
 
@@ -241,9 +237,12 @@ List 3 practical recommendations based on the challenge and desired focus area.
   - Regional: 68%
   - Global: 72%
 
-Return a single JSON with:
-- \"metrics\": [ ... ]
-- \"analysis\": \"...narrative markdown...\"
+Return only a valid JSON object structured like:
+{{
+  "metrics": [...],
+  "analysis": "markdown report text here"
+}}
+Do not include any explanation or text outside the JSON object.
 """
 
         response = client.chat.completions.create(
@@ -253,7 +252,18 @@ Return a single JSON with:
         raw = response.choices[0].message.content.strip()
         app.logger.debug(f"[boss_analyze] GPT raw: {raw}")
 
-        report = json.loads(raw)
+        # Safe fallback JSON decoding
+        try:
+            report = json.loads(raw)
+        except json.JSONDecodeError:
+            json_start = raw.find("{")
+            json_end = raw.rfind("}")
+            if json_start != -1 and json_end != -1:
+                safe_json = raw[json_start:json_end+1]
+                report = json.loads(safe_json)
+            else:
+                raise ValueError("GPT response is not a valid JSON block.")
+
         return jsonify(report)
 
     except Exception as e:
