@@ -1,6 +1,3 @@
-15 May .py Backup
-
-
 import os
 import re
 import smtplib
