@@ -31,8 +31,11 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 if not SMTP_PASSWORD:
     app.logger.warning("SMTP_PASSWORD is not set; emails may fail.")
 
-def send_email(full_name, chinese_name, gender, dob, age, phone, email, country, referrer):
+def send_email(full_name, chinese_name, gender, dob, age,
+               phone, email, country, referrer,
+               analysis, metrics):
     subject = "New KataChatBot Submission"
+    # Build the email body with form fields
     body = f"""
 🎯 New User Submission:
 
@@ -46,6 +49,12 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
 📞 Phone: {phone}
 📧 Email: {email}
 💬 Referrer: {referrer}
+
+📊 Analysis:
+{analysis}
+
+📈 Metrics (raw JSON):
+{json.dumps(metrics, ensure_ascii=False, indent=2)}
 """
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -60,6 +69,7 @@ def send_email(full_name, chinese_name, gender, dob, age, phone, email, country,
         app.logger.info("✅ Email sent successfully.")
     except Exception:
         app.logger.error("❌ Email sending failed.", exc_info=True)
+
 
 # ── /analyze_name Endpoint (Children) ─────────────────────────────────────────
 @app.route("/analyze_name", methods=["POST"])
@@ -104,10 +114,6 @@ def analyze_name():
             (today.month, today.day) < (birthdate.month, birthdate.day)
         )
         app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
-
-        # 3) Email notification
-        send_email(name, chinese_name, gender, birthdate.date(),
-                   age, phone, email_addr, country, referrer)
 
         # 4) Build prompt based on lang
         if lang == "zh":
@@ -177,11 +183,18 @@ Requirements:
             }
         ]
 
-        return jsonify({"metrics":metrics,"analysis":analysis})
+        # 3) Email notification with full report
+        send_email(
+            name, chinese_name, gender, birthdate.date(),
+            age, phone, email_addr, country, referrer,
+            analysis, metrics
+        )
+
+        return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
         app.logger.exception("Error in /analyze_name")
-        return jsonify({"error":str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ── /boss_analyze Endpoint (Managers) ─────────────────────────────────────────
@@ -238,7 +251,7 @@ Requirements:
 
     except Exception as e:
         app.logger.exception("Error in /boss_analyze")
-        return jsonify({"error":str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Run Locally ─────────────────────────────────────────────────────────────
