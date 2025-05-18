@@ -68,9 +68,7 @@ def analyze_name():
         lang         = data.get("lang", "en").lower()
 
         # 2) Parse DOB
-        day_str   = data.get("dob_day")
-        mon_str   = data.get("dob_month")
-        year_str  = data.get("dob_year")
+        day_str, mon_str, year_str = (data.get(k) for k in ("dob_day","dob_month","dob_year"))
         if day_str and mon_str and year_str:
             chinese_months = {
                 "一月":1, "二月":2, "三月":3, "四月":4,
@@ -109,7 +107,7 @@ def analyze_name():
         raw_report = response.choices[0].message.content
         analysis   = re.sub(r"<[^>]+>", "", raw_report)
 
-        # 5) Metrics generation (unchanged)
+        # 5) Metrics generation
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -117,26 +115,37 @@ def analyze_name():
         improved_percent  = round(base_improve / 5) * 5
         struggle_percent  = round(base_struggle / 5) * 5
 
+        # 6) Language-specific titles & labels
+        if lang == "en":
+            titles = ["Learning Preferences", "Study Habits", "Math Performance"]
+            labels = [
+                ["Visual","Auditory","Kinesthetic"],
+                ["Regular Study","Group Study","Solo Study"],
+                ["Algebra","Geometry"]
+            ]
+        elif lang == "zh":
+            titles = ["学习偏好", "学习习惯", "数学表现"]
+            labels = [
+                ["视觉","听觉","动手"],
+                ["定期学习","小组学习","独自学习"],
+                ["代数","几何"]
+            ]
+        else:  # tw
+            titles = ["學習偏好", "學習習慣", "數學表現"]
+            labels = [
+                ["視覺","聽覺","動手"],
+                ["定期學習","小組學習","獨自學習"],
+                ["代數","幾何"]
+            ]
+
         metrics = [
-            {
-                "title": "Learning Preferences" if lang=="en" else "學習偏好",
-                "labels": ["Visual","Auditory","Kinesthetic"] if lang=="en" else ["視覺","聽覺","動手"],
-                "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
-            },
-            {
-                "title": "Study Habits" if lang=="en" else "學習習慣",
-                "labels": ["Regular Study","Group Study","Solo Study"] if lang=="en" else ["定期學習","小組學習","獨自學習"],
-                "values": [70,30,60]
-            },
-            {
-                "title": "Math Performance" if lang=="en" else "數學表現",
-                "labels": ["Algebra","Geometry"] if lang=="en" else ["代數","幾何"],
-                "values": [improved_percent,70]
-            }
+            {"title": titles[0], "labels": labels[0],
+             "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]},
+            {"title": titles[1], "labels": labels[1], "values": [70,30,60]},
+            {"title": titles[2], "labels": labels[2], "values": [improved_percent,70]}
         ]
 
-        # 6) Build the HTML email body
-        # 6a) Header + submission data + AI report
+        # 7) Build the HTML email body
         email_html = f"""
         <html><body style="font-family:sans-serif; color:#333;">
           <h2>🎯 New User Submission:</h2>
@@ -162,41 +171,36 @@ def analyze_name():
           <div style="font-size:14px;">
         """
 
-        # 6b) Inline CSS bar charts
-        # palette must match your front-end
+        # 8) Inline CSS bar charts (palette unchanged)
         palette = ["#5E9CA0","#FF9F40","#9966FF","#4BC0C0","#FF6384","#36A2EB","#FFCE56","#C9CBCF"]
         for m in metrics:
             email_html += f"<strong>{m['title']}</strong><br>\n"
-            for idx, (label, value) in enumerate(zip(m["labels"], m["values"])):
+            for idx, (lbl, val) in enumerate(zip(m["labels"], m["values"])):
                 color = palette[idx % len(palette)]
                 email_html += (
                     f"<div style='margin:4px 0;'>"
-                    f"{label}:&nbsp;"
+                    f"{lbl}:&nbsp;"
                     f"<span style='display:inline-block;"
-                    f" width:{value}%;"
+                    f" width:{val}%;"
                     f" height:12px;"
                     f" background:{color};"
                     f" border-radius:4px;"
                     f" vertical-align:middle;'></span>"
-                    f"&nbsp;{value}%"
+                    f"&nbsp;{val}%"
                     f"</div>\n"
                 )
             email_html += "<br>\n"
 
-        # 6c) Footer
-        email_html += """
-          </div>
-        </body></html>
-        """
+        email_html += "</div></body></html>"
 
-        # 7) Send the email
+        # 9) Send the email
         send_email(
             name, chinese_name, gender, birthdate.date(),
             age, phone, email_addr, country, referrer,
             email_html
         )
 
-        # 8) Return JSON response (unchanged)
+        # 10) Return JSON response
         return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
@@ -209,7 +213,7 @@ def boss_analyze():
     try:
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
-        # ... your existing code ...
+        # … your existing code …
     except Exception as e:
         app.logger.exception("Error in /boss_analyze")
         return jsonify({"error": str(e)}), 500
