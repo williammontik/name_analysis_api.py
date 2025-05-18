@@ -3,18 +3,12 @@ import re
 import smtplib
 import random
 import logging
-import io
-import base64
-import numpy as np
 from datetime import datetime
 from dateutil import parser
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-import matplotlib.pyplot as plt
 import json
 
 # ── Flask Setup ─────────────────────────────────────────────────────────────
@@ -38,51 +32,22 @@ if not SMTP_PASSWORD:
 
 def send_email(full_name, chinese_name, gender, dob, age,
                phone, email_addr, country, referrer,
-               report_html, chart_images):
+               email_html_body):
     """
-    Sends a multipart HTML email with embedded chart images.
+    Sends an HTML email containing submission data, AI report, and inline CSS bar charts.
     """
     subject = "New KataChatBot Submission"
-    msg = MIMEMultipart('related')
+    msg = MIMEText(email_html_body, 'html')
     msg["Subject"] = subject
     msg["From"]    = SMTP_USERNAME
     msg["To"]      = SMTP_USERNAME
-
-    # Build HTML body
-    html = f"""
-    <html><body>
-      <h2>🎯 New User Submission:</h2>
-      <p>
-        <strong>👤 Full Name:</strong> {full_name}<br>
-        <strong>🈶 Chinese Name:</strong> {chinese_name}<br>
-        <strong>⚧️ Gender:</strong> {gender}<br>
-        <strong>🎂 DOB:</strong> {dob}<br>
-        <strong>🕑 Age:</strong> {age}<br>
-        <strong>🌍 Country:</strong> {country}
-      </p>
-      <p>
-        <strong>📞 Phone:</strong> {phone}<br>
-        <strong>📧 Email:</strong> {email_addr}<br>
-        <strong>💬 Referrer:</strong> {referrer}
-      </p>
-      <hr>
-      <h2>📄 Personalized AI-Generated Report</h2>
-      {report_html}
-      <h3>📊 Charts</h3>
-    """
-    # Attach each chart inline
-    for img_b64 in chart_images:
-        html += f'<img src="data:image/png;base64,{img_b64}" style="max-width:600px; margin-bottom:20px;"><br>\n'
-    html += "</body></html>"
-
-    msg.attach(MIMEText(html, 'html'))
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-        app.logger.info("✅ HTML email with charts sent successfully.")
+        app.logger.info("✅ HTML email sent successfully.")
     except Exception:
         app.logger.error("❌ Email sending failed.", exc_info=True)
 
@@ -122,7 +87,7 @@ def analyze_name():
         else:
             birthdate = parser.parse(data.get("dob", ""), dayfirst=True)
 
-        # compute age
+        # Compute age
         today = datetime.today()
         age = today.year - birthdate.year - (
             (today.month, today.day) < (birthdate.month, birthdate.day)
@@ -137,14 +102,14 @@ def analyze_name():
             prompt = f"Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}."
 
         # 4) Call OpenAI
-        response = client.chat.completions.create(
+        response   = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role":"user","content":prompt}]
         )
         raw_report = response.choices[0].message.content
         analysis   = re.sub(r"<[^>]+>", "", raw_report)
 
-        # 5) Metrics (unchanged)
+        # 5) Metrics generation (unchanged)
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -170,67 +135,68 @@ def analyze_name():
             }
         ]
 
-        # 6) Generate chart images with front-end palette & gradient mimic
-        palette = [
-            (94/255,156/255,160/255,0.8),
-            (255/255,159/255,64/255,0.8),
-            (153/255,102/255,255/255,0.8),
-            (75/255,192/255,192/255,0.8),
-            (255/255,99/255,132/255,0.8),
-            (54/255,162/255,235/255,0.8),
-            (255/255,206/255,86/255,0.8),
-            (201/255,203/255,207/255,0.8),
-        ]
-        chart_images = []
+        # 6) Build the HTML email body
+        # 6a) Header + submission data + AI report
+        email_html = f"""
+        <html><body style="font-family:sans-serif; color:#333;">
+          <h2>🎯 New User Submission:</h2>
+          <p>
+            <strong>👤 Full Name:</strong> {name}<br>
+            <strong>🈶 Chinese Name:</strong> {chinese_name}<br>
+            <strong>⚧️ Gender:</strong> {gender}<br>
+            <strong>🎂 DOB:</strong> {birthdate.date()}<br>
+            <strong>🕑 Age:</strong> {age}<br>
+            <strong>🌍 Country:</strong> {country}
+          </p>
+          <p>
+            <strong>📞 Phone:</strong> {phone}<br>
+            <strong>📧 Email:</strong> {email_addr}<br>
+            <strong>💬 Referrer:</strong> {referrer}
+          </p>
+          <hr>
+          <h2>📄 Personalized AI-Generated Report</h2>
+          <div style="font-size:14px; white-space:pre-wrap; margin-bottom:20px;">
+            {analysis}
+          </div>
+          <h2>📊 Charts</h2>
+          <div style="font-size:14px;">
+        """
+
+        # 6b) Inline CSS bar charts
+        # palette must match your front-end
+        palette = ["#5E9CA0","#FF9F40","#9966FF","#4BC0C0","#FF6384","#36A2EB","#FFCE56","#C9CBCF"]
         for m in metrics:
-            bar_colors = [palette[i % len(palette)] for i in range(len(m["values"]))]
-            fig, ax = plt.subplots(figsize=(6,4))
-            bars = ax.bar(
-                m["labels"],
-                m["values"],
-                color=bar_colors,
-                edgecolor=[(r, g, b, 1) for (r, g, b, a) in bar_colors],
-                linewidth=1.5,
-                width=0.6
-            )
-            ax.set_title(m["title"], fontsize=16)
-            ax.set_ylim(0, 100)
-            ax.set_ylabel("Percent")
-            ax.grid(axis='y', color='#f0f0f0')
-            ax.set_axisbelow(True)
-
-            # overlay light vertical gradient
-            for bar in bars:
-                x, y = bar.get_x(), bar.get_height()
-                w = bar.get_width()
-                grad = np.linspace(0,1,256).reshape(256,1)
-                ax.imshow(
-                    np.concatenate([grad,grad,grad,np.zeros_like(grad)], axis=1),
-                    extent=(x, x+w, 0, y),
-                    aspect='auto',
-                    cmap='Greys',
-                    alpha=0.15,
-                    origin='lower'
+            email_html += f"<strong>{m['title']}</strong><br>\n"
+            for idx, (label, value) in enumerate(zip(m["labels"], m["values"])):
+                color = palette[idx % len(palette)]
+                email_html += (
+                    f"<div style='margin:4px 0;'>"
+                    f"{label}:&nbsp;"
+                    f"<span style='display:inline-block;"
+                    f" width:{value}%;"
+                    f" height:12px;"
+                    f" background:{color};"
+                    f" border-radius:4px;"
+                    f" vertical-align:middle;'></span>"
+                    f"&nbsp;{value}%"
+                    f"</div>\n"
                 )
+            email_html += "<br>\n"
 
-            buf = io.BytesIO()
-            fig.tight_layout()
-            fig.savefig(buf, format="png", dpi=100)
-            plt.close(fig)
-            img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-            chart_images.append(img_b64)
+        # 6c) Footer
+        email_html += """
+          </div>
+        </body></html>
+        """
 
-        # 7) Prepare report HTML
-        report_html = f"<div style='font-family:Arial; font-size:14px;'><pre style='white-space:pre-wrap;'>{analysis}</pre></div>"
-
-        # 8) Send email with charts
+        # 7) Send the email
         send_email(
             name, chinese_name, gender, birthdate.date(),
             age, phone, email_addr, country, referrer,
-            report_html, chart_images
+            email_html
         )
 
-        # 9) Return JSON response
+        # 8) Return JSON response (unchanged)
         return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
@@ -239,11 +205,11 @@ def analyze_name():
 
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
-    # Unchanged boss_analyze implementation
+    # unchanged boss_analyze logic
     try:
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
-        # ... existing logic ...
+        # ... your existing code ...
     except Exception as e:
         app.logger.exception("Error in /boss_analyze")
         return jsonify({"error": str(e)}), 500
