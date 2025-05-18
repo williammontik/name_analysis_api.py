@@ -3,13 +3,16 @@ import re
 import smtplib
 import random
 import logging
+import io
+import base64
 from datetime import datetime
 from dateutil import parser
 from email.mime.text import MIMEText
-
+from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
+import matplotlib.pyplot as plt
 import json
 
 # ── Flask Setup ─────────────────────────────────────────────────────────────
@@ -31,50 +34,56 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 if not SMTP_PASSWORD:
     app.logger.warning("SMTP_PASSWORD is not set; emails may fail.")
 
-def send_email(full_name, chinese_name, gender, dob, age, phone, email_addr, country, referrer, report_html):
+def send_email(full_name, chinese_name, gender, dob, age,
+               phone, email_addr, country, referrer,
+               report_html, chart_images):
     """
-    Sends an HTML email containing both the submission data and the generated report.
+    Sends a multipart HTML email with embedded chart images.
     """
     subject = "New KataChatBot Submission"
-    # Build HTML message body
-    html_content = f"""
-    <html>
-      <body>
-        <h2>🎯 New User Submission:</h2>
-        <p>
-          <strong>👤 Full Name:</strong> {full_name}<br>
-          <strong>🈶 Chinese Name:</strong> {chinese_name}<br>
-          <strong>⚧️ Gender:</strong> {gender}<br>
-          <strong>🎂 DOB:</strong> {dob}<br>
-          <strong>🕑 Age:</strong> {age}<br>
-          <strong>🌍 Country:</strong> {country}
-        </p>
-        <p>
-          <strong>📞 Phone:</strong> {phone}<br>
-          <strong>📧 Email:</strong> {email_addr}<br>
-          <strong>💬 Referrer:</strong> {referrer}
-        </p>
-        <hr>
-        <h2>📄 Personalized AI-Generated Report</h2>
-        {report_html}
-      </body>
-    </html>
-    """
-    msg = MIMEText(html_content, 'html')
+    msg = MIMEMultipart('related')
     msg["Subject"] = subject
     msg["From"]    = SMTP_USERNAME
     msg["To"]      = SMTP_USERNAME
+
+    # Build HTML body
+    html = f"""
+    <html><body>
+      <h2>🎯 New User Submission:</h2>
+      <p>
+        <strong>👤 Full Name:</strong> {full_name}<br>
+        <strong>🈶 Chinese Name:</strong> {chinese_name}<br>
+        <strong>⚧️ Gender:</strong> {gender}<br>
+        <strong>🎂 DOB:</strong> {dob}<br>
+        <strong>🕑 Age:</strong> {age}<br>
+        <strong>🌍 Country:</strong> {country}
+      </p>
+      <p>
+        <strong>📞 Phone:</strong> {phone}<br>
+        <strong>📧 Email:</strong> {email_addr}<br>
+        <strong>💬 Referrer:</strong> {referrer}
+      </p>
+      <hr>
+      <h2>📄 Personalized AI-Generated Report</h2>
+      {report_html}
+      <h3>📊 Charts</h3>
+    """
+    # Attach each chart inline
+    for idx, img_b64 in enumerate(chart_images):
+        html += f'<img src="data:image/png;base64,{img_b64}" style="max-width:600px; margin-bottom:20px;"><br>\n'
+    html += "</body></html>"
+
+    msg.attach(MIMEText(html, 'html'))
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-        app.logger.info("✅ HTML email sent successfully.")
+        app.logger.info("✅ HTML email with charts sent successfully.")
     except Exception:
         app.logger.error("❌ Email sending failed.", exc_info=True)
 
-# ── /analyze_name Endpoint (Children) ─────────────────────────────────────────
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
     data = request.get_json(force=True)
@@ -116,21 +125,14 @@ def analyze_name():
         age = today.year - birthdate.year - (
             (today.month, today.day) < (birthdate.month, birthdate.day)
         )
-        app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
 
-        # 3) Build prompt based on lang
+        # 3) Build prompt
         if lang == "zh":
-            prompt = f"""
-请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
-"""
+            prompt = f"请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。"
         elif lang == "tw":
-            prompt = f"""
-請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
-"""
+            prompt = f"請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。"
         else:
-            prompt = f"""
-Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
-"""
+            prompt = f"Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}."
 
         # 4) Call OpenAI
         response = client.chat.completions.create(
@@ -140,7 +142,7 @@ Generate a statistical report on learning patterns for children aged {age}, gend
         raw_report = response.choices[0].message.content
         analysis   = re.sub(r"<[^>]+>", "", raw_report)
 
-        # 5) Metrics for charts (unchanged)
+        # 5) Metrics (unchanged)
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -151,7 +153,7 @@ Generate a statistical report on learning patterns for children aged {age}, gend
         metrics = [
             {
                 "title": "Learning Preferences" if lang=="en" else "學習偏好",
-                "labels": ["Visual", "Auditory", "Kinesthetic"] if lang=="en" else ["視覺","聽覺","動手"],
+                "labels": ["Visual","Auditory","Kinesthetic"] if lang=="en" else ["視覺","聽覺","動手"],
                 "values": [improved_percent, struggle_percent, 100 - improved_percent - struggle_percent]
             },
             {
@@ -162,40 +164,46 @@ Generate a statistical report on learning patterns for children aged {age}, gend
             {
                 "title": "Math Performance" if lang=="en" else "數學表現",
                 "labels": ["Algebra","Geometry"] if lang=="en" else ["代數","幾何"],
-                "values": [improved_percent, 70]
+                "values": [improved_percent,70]
             }
         ]
 
-        # 6) Prepare HTML snippet of the report for email
-        report_html = f"""
-        <div style='font-family:Arial, sans-serif; font-size:14px;'>
-          <pre style='white-space:pre-wrap;'>{analysis}</pre>
-        </div>
-        """
+        # 6) Generate chart images
+        chart_images = []
+        for m in metrics:
+            fig, ax = plt.subplots(figsize=(6,4))
+            ax.bar(m["labels"], m["values"], edgecolor='black')
+            ax.set_title(m["title"])
+            ax.set_ylim(0, 100)
+            ax.set_ylabel("Percent")
+            buf = io.BytesIO()
+            fig.tight_layout()
+            fig.savefig(buf, format="png")
+            plt.close(fig)
+            img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            chart_images.append(img_b64)
 
-        # 7) Send notification email with report attached
+        # 7) Prepare report HTML
+        report_html = f"<div style='font-family:Arial; font-size:14px;'><pre style='white-space:pre-wrap;'>{analysis}</pre></div>"
+
+        # 8) Send email with charts
         send_email(
             name, chinese_name, gender, birthdate.date(),
-            age, phone, email_addr, country, referrer, report_html
+            age, phone, email_addr, country, referrer,
+            report_html, chart_images
         )
 
-        # 8) Return API response (unchanged)
+        # 9) Return JSON
         return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
         app.logger.exception("Error in /analyze_name")
         return jsonify({"error": str(e)}), 500
 
-# ── /boss_analyze Endpoint (Managers) ─────────────────────────────────────────
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
-    try:
-        # ... (unchanged boss_analyze implementation) ...
-        pass
-    except Exception as e:
-        app.logger.exception("Error in /boss_analyze")
-        return jsonify({"error": str(e)}), 500
+    # unchanged boss_analyze implementation
+    ...
 
-# ── Run Locally ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
