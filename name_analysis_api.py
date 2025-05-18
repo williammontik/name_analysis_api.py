@@ -1,7 +1,3 @@
-18 May Full Child CEE CES CETW .PY backup
-
-
-
 import os
 import re
 import smtplib
