@@ -5,10 +5,12 @@ import random
 import logging
 import io
 import base64
+import numpy as np
 from datetime import datetime
 from dateutil import parser
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
@@ -69,7 +71,7 @@ def send_email(full_name, chinese_name, gender, dob, age,
       <h3>📊 Charts</h3>
     """
     # Attach each chart inline
-    for idx, img_b64 in enumerate(chart_images):
+    for img_b64 in chart_images:
         html += f'<img src="data:image/png;base64,{img_b64}" style="max-width:600px; margin-bottom:20px;"><br>\n'
     html += "</body></html>"
 
@@ -168,17 +170,52 @@ def analyze_name():
             }
         ]
 
-        # 6) Generate chart images
+        # 6) Generate chart images with front-end palette & gradient mimic
+        palette = [
+            (94/255,156/255,160/255,0.8),
+            (255/255,159/255,64/255,0.8),
+            (153/255,102/255,255/255,0.8),
+            (75/255,192/255,192/255,0.8),
+            (255/255,99/255,132/255,0.8),
+            (54/255,162/255,235/255,0.8),
+            (255/255,206/255,86/255,0.8),
+            (201/255,203/255,207/255,0.8),
+        ]
         chart_images = []
         for m in metrics:
+            bar_colors = [palette[i % len(palette)] for i in range(len(m["values"]))]
             fig, ax = plt.subplots(figsize=(6,4))
-            ax.bar(m["labels"], m["values"], edgecolor='black')
-            ax.set_title(m["title"])
+            bars = ax.bar(
+                m["labels"],
+                m["values"],
+                color=bar_colors,
+                edgecolor=[(r, g, b, 1) for (r, g, b, a) in bar_colors],
+                linewidth=1.5,
+                width=0.6
+            )
+            ax.set_title(m["title"], fontsize=16)
             ax.set_ylim(0, 100)
             ax.set_ylabel("Percent")
+            ax.grid(axis='y', color='#f0f0f0')
+            ax.set_axisbelow(True)
+
+            # overlay light vertical gradient
+            for bar in bars:
+                x, y = bar.get_x(), bar.get_height()
+                w = bar.get_width()
+                grad = np.linspace(0,1,256).reshape(256,1)
+                ax.imshow(
+                    np.concatenate([grad,grad,grad,np.zeros_like(grad)], axis=1),
+                    extent=(x, x+w, 0, y),
+                    aspect='auto',
+                    cmap='Greys',
+                    alpha=0.15,
+                    origin='lower'
+                )
+
             buf = io.BytesIO()
             fig.tight_layout()
-            fig.savefig(buf, format="png")
+            fig.savefig(buf, format="png", dpi=100)
             plt.close(fig)
             img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
             chart_images.append(img_b64)
@@ -193,7 +230,7 @@ def analyze_name():
             report_html, chart_images
         )
 
-        # 9) Return JSON
+        # 9) Return JSON response
         return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
@@ -202,8 +239,14 @@ def analyze_name():
 
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
-    # unchanged boss_analyze implementation
-    ...
+    # Unchanged boss_analyze implementation
+    try:
+        data = request.get_json(force=True)
+        app.logger.info(f"[boss_analyze] payload: {data}")
+        # ... existing logic ...
+    except Exception as e:
+        app.logger.exception("Error in /boss_analyze")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
