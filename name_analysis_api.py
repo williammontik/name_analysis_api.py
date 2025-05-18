@@ -95,9 +95,49 @@ def analyze_name():
         )
         app.logger.debug(f"Computed birthdate={birthdate.date()}, age={age}")
 
-        # 3) Build prompt (unchanged) …
-        # 4) Call OpenAI & strip HTML tags to get `analysis` (unchanged) …
-        # 5) Generate metrics (unchanged) …
+        # 3) Build prompt based on lang
+        if lang == "zh":
+            prompt = f"""
+请用简体中文生成一份学习模式统计报告，面向年龄 {age}、性别 {gender}、地区 {country} 的孩子。
+要求：
+1. 只给出百分比数据
+2. 在文本中用 Markdown 语法给出 3 个“柱状图”示例
+3. 对比区域/全球趋势
+4. 突出 3 个关键发现
+5. 不要个性化建议
+6. 学术风格
+"""
+        elif lang == "tw":
+            prompt = f"""
+請用繁體中文生成一份學習模式統計報告，面向年齡 {age}、性別 {gender}、地區 {country} 的孩子。
+要求：
+1. 只給出百分比數據
+2. 在文本中用 Markdown 语法给出 3 個「柱狀圖」示例
+3. 比較區域／全球趨勢
+4. 突出 3 個關鍵發現
+5. 不要個性化建議
+6. 學術風格
+"""
+        else:
+            prompt = f"""
+Generate a statistical report on learning patterns for children aged {age}, gender {gender}, in {country}.
+Requirements:
+1. Only factual percentages
+2. Include 3 markdown bar‐charts
+3. Compare regional/global
+4. Highlight 3 key findings
+5. No personalized advice
+6. Academic style
+"""
+
+        # 4) Call OpenAI and strip any HTML tags
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        analysis = re.sub(r"<[^>]+>", "", response.choices[0].message.content)
+
+        # 5) Generate metrics
         base_improve  = random.randint(65, 80)
         base_struggle = random.randint(30, 45)
         if base_struggle >= base_improve - 5:
@@ -179,7 +219,7 @@ def analyze_name():
         # 7) Send HTML email
         send_email(email_html)
 
-        # 8) Return the same JSON response you already had
+        # 8) Return JSON response
         return jsonify({"metrics": metrics, "analysis": analysis})
 
     except Exception as e:
@@ -190,11 +230,52 @@ def analyze_name():
 # ── /boss_analyze Endpoint (Managers) ─────────────────────────────────────────
 @app.route("/boss_analyze", methods=["POST"])
 def boss_analyze():
-    # unchanged boss_analyze…
     try:
         data = request.get_json(force=True)
         app.logger.info(f"[boss_analyze] payload: {data}")
-        # … your existing boss_analyze logic …
+
+        # 1) Extract form fields
+        name      = data.get("memberName", "Unknown")
+        position  = data.get("position", "Staff")
+        challenge = data.get("challenge", "")
+        focus     = data.get("focus", "")
+        country   = data.get("country", "")
+
+        # 2) Build prompt for JSON output
+        prompt = f"""
+You are an expert organizational psychologist.
+Generate a detailed performance report for a team member named "{name}",
+working as "{position}", who faces this key challenge:
+"{challenge}". Their preferred development focus is "{focus}", and they are located in "{country}".
+
+Requirements:
+1. Return exactly three bar-chart metrics in JSON, each comparing:
+   - Individual score
+   - Regional average
+   - Global average
+   Example item:
+   {{
+     "title":"Leadership",
+     "labels":["Individual","Regional Avg","Global Avg"],
+     "values":[75,65,70]
+   }}
+2. Provide a 150–200 word narrative in the "analysis" field that:
+   - Highlights their top strength vs. region/global
+   - Identifies their biggest gap
+   - Offers three actionable next steps
+3. Return only a single JSON object with keys "metrics" (array) and "analysis" (string).
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role":"user","content":prompt}]
+        )
+        raw = response.choices[0].message.content.strip()
+        app.logger.debug(f"[boss_analyze] raw output: {raw}")
+
+        report = json.loads(raw)
+        return jsonify(report)
+
     except Exception as e:
         app.logger.exception("Error in /boss_analyze")
         return jsonify({"error": str(e)}), 500
