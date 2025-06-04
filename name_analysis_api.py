@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
-import os, smtplib, logging
+import os, smtplib, logging, random
 from datetime import datetime
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
-import random
 
 app = Flask(__name__)
 CORS(app)
 app.logger.setLevel(logging.DEBUG)
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -25,7 +21,7 @@ def send_email(html_body):
     msg["From"] = SMTP_USERNAME
     msg["To"] = SMTP_USERNAME
     try:
-        with smtpllib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:  # ✅ fixed typo here
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
@@ -38,17 +34,17 @@ def generate_child_metrics():
         {
             "title": "Learning Preferences",
             "labels": ["Visual", "Auditory", "Kinesthetic"],
-            "values": [random.randint(45, 70), random.randint(20, 40), random.randint(10, 30)]
+            "values": [random.randint(50, 70), random.randint(25, 40), random.randint(10, 30)]
         },
         {
             "title": "Study Engagement",
             "labels": ["Daily Review", "Group Study", "Independent Effort"],
-            "values": [random.randint(35, 60), random.randint(20, 45), random.randint(35, 60)]
+            "values": [random.randint(40, 60), random.randint(20, 40), random.randint(30, 50)]
         },
         {
             "title": "Academic Confidence",
             "labels": ["Math", "Reading", "Focus & Attention"],
-            "values": [random.randint(40, 85), random.randint(40, 70), random.randint(30, 65)]
+            "values": [random.randint(50, 85), random.randint(40, 70), random.randint(30, 65)]
         }
     ]
 
@@ -101,7 +97,7 @@ def analyze_name():
         email = data.get("email", "").strip()
         referrer = data.get("referrer", "").strip()
 
-        # Parse month string like "September" or number
+        # ✅ Handle both month number and month name (e.g. "August")
         month_str = str(data.get("dob_month")).strip()
         if month_str.isdigit():
             month = int(month_str)
@@ -135,7 +131,7 @@ def analyze_name():
 
         return jsonify({
             "metrics": metrics,
-            "analysis": html_result
+            "analysis": html_result  # ✅ no markdown, only styled HTML
         })
 
     except Exception as e:
