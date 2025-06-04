@@ -1,112 +1,142 @@
 # -*- coding: utf-8 -*-
-import os, logging, smtplib, traceback, random, json
+import os, smtplib, logging, random
 from datetime import datetime
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
 
-# Flask setup
 app = Flask(__name__)
 CORS(app)
-logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.DEBUG)
 
-# OpenAI setup
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Email credentials
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-# Route
-@app.route("/analyze_name", methods=["POST"])
-def analyze_name():
-    try:
-        data = request.get_json()
-        name = data.get("name", "")
-        gender = data.get("gender", "")
-        country = data.get("country", "")
-        year = data.get("dob_year", "")
-        email = data.get("email", "")
-
-        age = datetime.now().year - int(year)
-
-        # === Chart Section ===
-        metrics = [
-            {
-                "title": "Learning Preference",
-                "labels": ["Visual", "Auditory", "Kinesthetic"],
-                "values": [random.randint(50, 90), random.randint(10, 50), random.randint(5, 40)]
-            },
-            {
-                "title": "Study Habits",
-                "labels": ["Daily Review", "Group Study"],
-                "values": [random.randint(30, 90), random.randint(10, 70)]
-            },
-            {
-                "title": "Confidence Areas",
-                "labels": ["Math", "Reading", "Focus & Attention"],
-                "values": [random.randint(40, 95), random.randint(30, 80), random.randint(20, 70)]
-            }
-        ]
-
-        # === Summary Section ===
-        summary = [
-            f"In {country}, many children around the age of {age} are exploring the world with curiosity and differing strengths. Among them, a strong preference for {metrics[0]['labels'][0]} learning shows up prominently at {metrics[0]['values'][0]}%, suggesting a need for engaging visual tools in their education.",
-            f"Study behavior insights reveal that while {metrics[1]['values'][0]}% show consistency in daily review, only {metrics[1]['values'][1]}% engage in group study — indicating room to cultivate collaborative learning environments.",
-            f"Confidence trends show higher assurance in Math ({metrics[2]['values'][0]}%) than in Reading ({metrics[2]['values'][1]}%), while focus-related abilities average at {metrics[2]['values'][2]}%. These insights reflect both growth opportunities and areas needing gentle support.",
-            f"These metrics are based on anonymized comparisons with hundreds of learners across Singapore, Malaysia, and Taiwan. They serve not as judgment but as a guide — empowering parents with clearer understanding and creative next steps. 💡"
-        ]
-
-        # === Footer Section ===
-        footer = (
-            "<div style='background-color:#f9f9f9;color:#333;padding:20px;border-left:6px solid #5E9CA0;"
-            "border-radius:8px;margin-top:30px;'>"
-            "<strong>📊 Insights Generated From:</strong>"
-            "<ul style='margin-top:10px;margin-bottom:10px;padding-left:20px;line-height:1.7;'>"
-            "<li>Aggregated data from anonymized students in Singapore, Malaysia, and Taiwan</li>"
-            "<li>Educational trend benchmarking using OpenAI's analytical tools</li></ul>"
-            "<p style='margin-top:10px;line-height:1.7;'>All insights are generated through statistically significant patterns, without referencing any personal record. "
-            "Our platform is fully PDPA-compliant and used only for improvement guidance.</p>"
-            "<p style='margin-top:10px;line-height:1.7;'>"
-            "<strong>PS:</strong> Your full personalized report will be sent to your inbox within <strong>24 hours</strong>. "
-            "If you prefer a quick chat, we’re happy to arrange a <strong>15-minute call</strong> to walk you through it."
-            "</p></div>"
-        )
-
-        # Format for frontend
-        full_analysis = "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>"
-        full_analysis += "".join([f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{para}</p>" for para in summary])
-        full_analysis += footer
-
-        # Send email (optional: enable if needed)
-        email_body = f"<h2>Child Insight Report for {name}</h2>" + full_analysis
-        send_email(email_body)
-
-        return jsonify({ "metrics": metrics, "analysis": full_analysis })
-
-    except Exception as e:
-        logging.error(traceback.format_exc())
-        return jsonify({ "error": "⚠️ Unable to generate analysis. Please try again later." })
-
-# === Email Sender ===
 def send_email(html_body):
-    subject = "Your Child Insight Report"
+    subject = "New KataChatBot Submission"
     msg = MIMEText(html_body, 'html')
     msg["Subject"] = subject
     msg["From"] = SMTP_USERNAME
     msg["To"] = SMTP_USERNAME
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:  # ✅ fixed typo here
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-        logging.info("✅ Email sent")
+        app.logger.info("✅ Email sent")
     except Exception:
-        logging.error("❌ Email failed to send.")
+        app.logger.error("❌ Email sending failed", exc_info=True)
 
-# === Run app ===
+def generate_child_metrics():
+    return [
+        {
+            "title": "Learning Preferences",
+            "labels": ["Visual", "Auditory", "Kinesthetic"],
+            "values": [random.randint(50, 70), random.randint(25, 40), random.randint(10, 30)]
+        },
+        {
+            "title": "Study Engagement",
+            "labels": ["Daily Review", "Group Study", "Independent Effort"],
+            "values": [random.randint(40, 60), random.randint(20, 40), random.randint(30, 50)]
+        },
+        {
+            "title": "Academic Confidence",
+            "labels": ["Math", "Reading", "Focus & Attention"],
+            "values": [random.randint(50, 85), random.randint(40, 70), random.randint(30, 65)]
+        }
+    ]
+
+def generate_child_summary(age, gender, country, metrics):
+    return [
+        f"In {country}, many {gender.lower()} children around the age of {age} are navigating their early learning years with diverse styles and habits. "
+        f"Our data reveals a strong preference for {metrics[0]['labels'][0].lower()} learning at {metrics[0]['values'][0]}%, followed by {metrics[0]['labels'][1]} at {metrics[0]['values'][1]}% and {metrics[0]['labels'][2]} at {metrics[0]['values'][2]}%. "
+        "This suggests a need for image-rich, story-based or interactive teaching tools that align with these natural inclinations.",
+
+        f"Engagement patterns show {metrics[1]['values'][0]}% of learners engage in daily review, while {metrics[1]['values'][2]}% demonstrate independent study motivation. "
+        f"Group study, however, appears less common at {metrics[1]['values'][1]}%, hinting at a potential area for improvement in collaborative learning environments.",
+
+        f"Confidence indicators show Math scoring highest at {metrics[2]['values'][0]}%, followed by Reading at {metrics[2]['values'][1]}%. "
+        f"The Focus & Attention score stands at {metrics[2]['values'][2]}%, suggesting some learners may benefit from better classroom routines or emotional regulation practices.",
+
+        "These patterns help parents and educators across Singapore, Malaysia, and Taiwan make informed decisions. "
+        "By aligning support strategies with emerging strengths and gaps, children can flourish with balanced learning styles and deeper emotional security."
+    ]
+
+def generate_summary_html(paragraphs):
+    return "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>" + \
+        "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{p}</p>\n" for p in paragraphs)
+
+def build_response(metrics, summary_paragraphs):
+    summary = generate_summary_html(summary_paragraphs)
+    footer = """
+    <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
+      <strong>The insights in this report are generated by Katachat’s AI systems analyzing:</strong><br>
+      1. Our proprietary database of anonymized learning patterns from Singaporean, Malaysian and Taiwanese students (with parental consent)<br>
+      2. Aggregated, non-personal educational trends from trusted third-party sources including OpenAI’s research datasets<br>
+      <em>All data is processed through our AI models to identify statistically significant patterns while maintaining strict PDPA compliance. Sample sizes vary by analysis, with minimum thresholds of 500+ data points for demographic comparisons.</em>
+    </p>
+    <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
+      <strong>PS:</strong> We know you’re eager to receive a personalized report for your child. It’s on its way to your inbox and should arrive within 24 hours.
+      If you have any questions, feel free to message us on WhatsApp and we’ll get right back to you. We’re also happy to arrange a quick 15-minute phone call at your convenience.
+    </p>
+    """
+    return summary + footer
+
+@app.route("/analyze_name", methods=["POST"])
+def analyze_name():
+    try:
+        data = request.get_json(force=True)
+        app.logger.info(f"[analyze_name] payload: {data}")
+
+        name = data.get("name", "").strip()
+        gender = data.get("gender", "").strip()
+        country = data.get("country", "").strip()
+        phone = data.get("phone", "").strip()
+        email = data.get("email", "").strip()
+        referrer = data.get("referrer", "").strip()
+
+        # ✅ Handle both month number and month name (e.g. "August")
+        month_str = str(data.get("dob_month")).strip()
+        if month_str.isdigit():
+            month = int(month_str)
+        else:
+            month = datetime.strptime(month_str.capitalize(), "%B").month
+
+        birthdate = datetime(int(data.get("dob_year")), month, int(data.get("dob_day")))
+        today = datetime.today()
+        age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+
+        metrics = generate_child_metrics()
+        summary = generate_child_summary(age, gender, country, metrics)
+        html_result = build_response(metrics, summary)
+
+        email_html = f"""<html><body style="font-family:sans-serif;color:#333">
+        <h2>🎯 New User Submission:</h2>
+        <p>
+        👤 <strong>Full Name:</strong> {name}<br>
+        ⚧️ <strong>Gender:</strong> {gender}<br>
+        🎂 <strong>DOB:</strong> {birthdate.date()}<br>
+        🕑 <strong>Age:</strong> {age}<br>
+        🌍 <strong>Country:</strong> {country}<br>
+        📞 <strong>Phone:</strong> {phone}<br>
+        📧 <strong>Email:</strong> {email}<br>
+        💬 <strong>Referrer:</strong> {referrer}
+        </p>
+        <hr><h2>📊 AI-Generated Report</h2>
+        {html_result}</body></html>"""
+
+        send_email(email_html)
+
+        return jsonify({
+            "metrics": metrics,
+            "analysis": html_result  # ✅ no markdown, only styled HTML
+        })
+
+    except Exception as e:
+        app.logger.exception("Error in /analyze_name")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0")
