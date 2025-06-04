@@ -110,11 +110,16 @@ def analyze_name():
         email_addr = data.get("email", "").strip()
         referrer = data.get("referrer", "").strip()
 
-        # Parse DOB
-        dob_day = data.get("dob_day")
-        dob_month = data.get("dob_month")
-        dob_year = data.get("dob_year")
-        birthdate = datetime(int(dob_year), int(dob_month), int(dob_day))
+        # ✅ FIXED: Parse month name or number correctly
+        month_str = str(data.get("dob_month")).strip()
+        if month_str.isdigit():
+            month = int(month_str)
+        else:
+            month = datetime.strptime(month_str.capitalize(), "%B").month
+
+        birthdate = datetime(int(data.get("dob_year")), month, int(data.get("dob_day")))
+
+        # Age
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
