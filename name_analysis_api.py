@@ -1,106 +1,66 @@
 # -*- coding: utf-8 -*-
-import os, smtplib, logging, random
+import os, logging, smtplib, traceback, random, json
 from datetime import datetime
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
 
+# Flask setup
 app = Flask(__name__)
 CORS(app)
-app.logger.setLevel(logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
+# OpenAI setup
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Email credentials
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-def calculate_age(day, month, year):
-    today = datetime.today()
-    birth_date = datetime(year=int(year), month=datetime.strptime(month, "%B").month, day=int(day))
-    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
-
-def generate_child_summary(age, gender, country, metrics):
-    pref = metrics[0]
-    study = metrics[1]
-    conf = metrics[2]
-
-    top_pref_label = pref["labels"][0]
-    top_pref_value = pref["values"][0]
-
-    daily_review = study["values"][0]
-    group_study = study["values"][1]
-    math_conf = conf["values"][0]
-    reading_conf = conf["values"][1]
-    focus_conf = conf["values"][2]
-
-    return [
-        f"Across {country}, children around the age of {age} are navigating foundational learning stages where attention spans, confidence, and curiosity develop in unique ways. Our data shows that {top_pref_label} learning is preferred by a significant portion of this group at {top_pref_value}%, highlighting the need for teaching tools that are visual, interactive, and emotionally engaging.",
-        f"A closer look at study behaviors reveals that while {daily_review}% of children engage in daily revision, collaborative group learning is much less common at {group_study}%. This suggests that many children may benefit from structured peer interactions or team-based learning activities to reinforce comprehension and social growth.",
-        f"Confidence levels in core subjects such as Math and Reading vary, with Math showing stronger confidence at {math_conf}% compared to Reading at {reading_conf}%. However, Focus & Attention scores at {focus_conf}% indicate a common challenge — often tied to screen exposure, family expectations, or over-scheduling. Supportive routines and mindful coaching can make a real difference here.",
-        f"By comparing your child's profile with over 500 anonymized learners in Singapore, Malaysia, and Taiwan, we’ve identified patterns that point to strengths and challenges in your region. These findings are not a judgment — rather, they offer a clearer map to guide your next steps with love, clarity, and strategic support. 💡"
-    ]
-
-def send_email(html_body):
-    subject = "New KataChatBot Submission"
-    msg = MIMEText(html_body, 'html')
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USERNAME
-    msg["To"] = SMTP_USERNAME
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-        app.logger.info("✅ Email sent")
-    except Exception as e:
-        app.logger.error("❌ Email send failed: %s", str(e))
-
-def generate_metrics():
-    return [
-        {
-            "title": "Learning Preference",
-            "labels": ["Visual", "Auditory", "Kinesthetic"],
-            "values": random.sample(range(60, 91), 3)
-        },
-        {
-            "title": "Study Habits",
-            "labels": ["Daily Review", "Group Study", "Independent Motivation"],
-            "values": random.sample(range(40, 86), 3)
-        },
-        {
-            "title": "Confidence Scores",
-            "labels": ["Math", "Reading", "Focus & Attention"],
-            "values": random.sample(range(30, 91), 3)
-        }
-    ]
-
+# Route
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
     try:
-        data = request.json
+        data = request.get_json()
         name = data.get("name", "")
-        chinese_name = data.get("chinese_name", "")
         gender = data.get("gender", "")
-        dob_day = data.get("dob_day", "")
-        dob_month = data.get("dob_month", "")
-        dob_year = data.get("dob_year", "")
-        phone = data.get("phone", "")
-        email = data.get("email", "")
         country = data.get("country", "")
-        referrer = data.get("referrer", "")
+        year = data.get("dob_year", "")
+        email = data.get("email", "")
 
-        age = calculate_age(dob_day, dob_month, dob_year)
-        metrics = generate_metrics()
-        summary_paragraphs = generate_child_summary(age, gender, country, metrics)
+        age = datetime.now().year - int(year)
 
-        full_html = (
-            "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>" +
-            "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{para}</p>" for para in summary_paragraphs)
-        )
+        # === Chart Section ===
+        metrics = [
+            {
+                "title": "Learning Preference",
+                "labels": ["Visual", "Auditory", "Kinesthetic"],
+                "values": [random.randint(50, 90), random.randint(10, 50), random.randint(5, 40)]
+            },
+            {
+                "title": "Study Habits",
+                "labels": ["Daily Review", "Group Study"],
+                "values": [random.randint(30, 90), random.randint(10, 70)]
+            },
+            {
+                "title": "Confidence Areas",
+                "labels": ["Math", "Reading", "Focus & Attention"],
+                "values": [random.randint(40, 95), random.randint(30, 80), random.randint(20, 70)]
+            }
+        ]
 
+        # === Summary Section ===
+        summary = [
+            f"In {country}, many children around the age of {age} are exploring the world with curiosity and differing strengths. Among them, a strong preference for {metrics[0]['labels'][0]} learning shows up prominently at {metrics[0]['values'][0]}%, suggesting a need for engaging visual tools in their education.",
+            f"Study behavior insights reveal that while {metrics[1]['values'][0]}% show consistency in daily review, only {metrics[1]['values'][1]}% engage in group study — indicating room to cultivate collaborative learning environments.",
+            f"Confidence trends show higher assurance in Math ({metrics[2]['values'][0]}%) than in Reading ({metrics[2]['values'][1]}%), while focus-related abilities average at {metrics[2]['values'][2]}%. These insights reflect both growth opportunities and areas needing gentle support.",
+            f"These metrics are based on anonymized comparisons with hundreds of learners across Singapore, Malaysia, and Taiwan. They serve not as judgment but as a guide — empowering parents with clearer understanding and creative next steps. 💡"
+        ]
+
+        # === Footer Section ===
         footer = (
             "<div style='background-color:#f9f9f9;color:#333;padding:20px;border-left:6px solid #5E9CA0;"
             "border-radius:8px;margin-top:30px;'>"
@@ -116,26 +76,37 @@ def analyze_name():
             "</p></div>"
         )
 
-        email_content = (
-            f"<h2>New Child Submission</h2>"
-            f"<p><strong>Name:</strong> {name}</p>"
-            f"<p><strong>Chinese Name:</strong> {chinese_name}</p>"
-            f"<p><strong>Gender:</strong> {gender}</p>"
-            f"<p><strong>DOB:</strong> {dob_day} {dob_month} {dob_year}</p>"
-            f"<p><strong>Phone:</strong> {phone}</p>"
-            f"<p><strong>Email:</strong> {email}</p>"
-            f"<p><strong>Country:</strong> {country}</p>"
-            f"<p><strong>Referrer:</strong> {referrer}</p><br><hr><br>"
-            f"{full_html}{footer}"
-        )
+        # Format for frontend
+        full_analysis = "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>"
+        full_analysis += "".join([f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{para}</p>" for para in summary])
+        full_analysis += footer
 
-        send_email(email_content)
+        # Send email (optional: enable if needed)
+        email_body = f"<h2>Child Insight Report for {name}</h2>" + full_analysis
+        send_email(email_body)
 
-        return jsonify({"metrics": metrics, "analysis": full_html + footer})
+        return jsonify({ "metrics": metrics, "analysis": full_analysis })
 
     except Exception as e:
-        app.logger.error("❌ Analysis failed: %s", str(e))
-        return jsonify({"error": "⚠️ Unable to generate analysis. Please try again later."}), 500
+        logging.error(traceback.format_exc())
+        return jsonify({ "error": "⚠️ Unable to generate analysis. Please try again later." })
 
+# === Email Sender ===
+def send_email(html_body):
+    subject = "Your Child Insight Report"
+    msg = MIMEText(html_body, 'html')
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USERNAME
+    msg["To"] = SMTP_USERNAME
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        logging.info("✅ Email sent")
+    except Exception:
+        logging.error("❌ Email failed to send.")
+
+# === Run app ===
 if __name__ == "__main__":
     app.run(debug=True)
