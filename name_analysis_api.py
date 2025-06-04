@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, re, smtplib, logging
+import os, smtplib, logging
 from datetime import datetime
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify
@@ -18,7 +18,6 @@ SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-
 def send_email(html_body):
     subject = "New KataChatBot Submission"
     msg = MIMEText(html_body, 'html')
@@ -26,63 +25,56 @@ def send_email(html_body):
     msg["From"] = SMTP_USERNAME
     msg["To"] = SMTP_USERNAME
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtpllib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-        app.logger.info("✅ HTML email sent successfully.")
+        app.logger.info("✅ Email sent")
     except Exception:
-        app.logger.error("❌ Email sending failed.", exc_info=True)
-
+        app.logger.error("❌ Email sending failed", exc_info=True)
 
 def generate_child_metrics():
     return [
         {
             "title": "Learning Preferences",
             "labels": ["Visual", "Auditory", "Kinesthetic"],
-            "values": [random.randint(40, 70), random.randint(20, 40), random.randint(10, 30)]
+            "values": [random.randint(45, 70), random.randint(20, 40), random.randint(10, 30)]
         },
         {
             "title": "Study Engagement",
             "labels": ["Daily Review", "Group Study", "Independent Effort"],
-            "values": [random.randint(30, 60), random.randint(20, 50), random.randint(30, 60)]
+            "values": [random.randint(35, 60), random.randint(20, 45), random.randint(35, 60)]
         },
         {
             "title": "Academic Confidence",
             "labels": ["Math", "Reading", "Focus & Attention"],
-            "values": [random.randint(40, 80), random.randint(40, 80), random.randint(30, 70)]
+            "values": [random.randint(40, 85), random.randint(40, 70), random.randint(30, 65)]
         }
     ]
 
-
 def generate_child_summary(age, gender, country, metrics):
-    tone_intro = f"In {country}, many {gender.lower()} children around the age of {age} are navigating their early learning years with diverse styles and habits. "
     return [
-        f"{tone_intro}From our insights, a strong {metrics[0]['labels'][0].lower()} learning preference is evident, with {metrics[0]['values'][0]}% leaning toward this mode. "
-        f"{metrics[0]['labels'][1]} and {metrics[0]['labels'][2]} preferences follow at {metrics[0]['values'][1]}% and {metrics[0]['values'][2]}%, respectively. "
-        "This suggests a need for more image-rich, story-based teaching methods.",
+        f"In {country}, many {gender.lower()} children around the age of {age} are navigating their early learning years with diverse styles and habits. "
+        f"Our data reveals a strong preference for {metrics[0]['labels'][0].lower()} learning at {metrics[0]['values'][0]}%, followed by {metrics[0]['labels'][1]} at {metrics[0]['values'][1]}% and {metrics[0]['labels'][2]} at {metrics[0]['values'][2]}%. "
+        "This suggests a need for image-rich, story-based or interactive teaching tools that align with these natural inclinations.",
 
-        f"Study habits are also evolving. With {metrics[1]['values'][0]}% engaging in daily review and {metrics[1]['values'][2]}% showing independent effort, "
-        f"we see resilience in their ability to cope with routines. However, group study lags behind at {metrics[1]['values'][1]}%, "
-        "indicating an area where social learning could be nurtured further.",
+        f"Engagement patterns show {metrics[1]['values'][0]}% of learners engage in daily review, while {metrics[1]['values'][2]}% demonstrate independent study motivation. "
+        f"Group study, however, appears less common at {metrics[1]['values'][1]}%, hinting at a potential area for improvement in collaborative learning environments.",
 
-        f"Confidence levels across subjects tell an important story: {metrics[2]['labels'][0]} leads with {metrics[2]['values'][0]}%, followed closely by "
-        f"{metrics[2]['labels'][1]} at {metrics[2]['values'][1]}%. Yet, the {metrics[2]['labels'][2].lower()} metric, at {metrics[2]['values'][2]}%, "
-        "hints at struggles with sustained attention or emotional readiness in class.",
+        f"Confidence indicators show Math scoring highest at {metrics[2]['values'][0]}%, followed by Reading at {metrics[2]['values'][1]}%. "
+        f"The Focus & Attention score stands at {metrics[2]['values'][2]}%, suggesting some learners may benefit from better classroom routines or emotional regulation practices.",
 
-        "By viewing these trends through a broader lens, we can better tailor support strategies—especially for parents and educators in Singapore, Malaysia, and Taiwan—"
-        "to help children grow confidently with balanced learning habits, emotional support, and structured environments."
+        "These patterns help parents and educators across Singapore, Malaysia, and Taiwan make informed decisions. "
+        "By aligning support strategies with emerging strengths and gaps, children can flourish with balanced learning styles and deeper emotional security."
     ]
 
-
-def generate_child_summary_html(paragraphs):
+def generate_summary_html(paragraphs):
     return "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>" + \
-           "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{p}</p>\n" for p in paragraphs)
+        "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{p}</p>\n" for p in paragraphs)
 
-
-def build_child_response_block(metrics, summary_paragraphs):
-    summary_html = generate_child_summary_html(summary_paragraphs)
-    footer_html = """
+def build_response(metrics, summary_paragraphs):
+    summary = generate_summary_html(summary_paragraphs)
+    footer = """
     <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
       <strong>The insights in this report are generated by Katachat’s AI systems analyzing:</strong><br>
       1. Our proprietary database of anonymized learning patterns from Singaporean, Malaysian and Taiwanese students (with parental consent)<br>
@@ -94,8 +86,7 @@ def build_child_response_block(metrics, summary_paragraphs):
       If you have any questions, feel free to message us on WhatsApp and we’ll get right back to you. We’re also happy to arrange a quick 15-minute phone call at your convenience.
     </p>
     """
-    return summary_html + footer_html
-
+    return summary + footer
 
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
@@ -107,10 +98,10 @@ def analyze_name():
         gender = data.get("gender", "").strip()
         country = data.get("country", "").strip()
         phone = data.get("phone", "").strip()
-        email_addr = data.get("email", "").strip()
+        email = data.get("email", "").strip()
         referrer = data.get("referrer", "").strip()
 
-        # ✅ FIXED: Parse month name or number correctly
+        # Parse month string like "September" or number
         month_str = str(data.get("dob_month")).strip()
         if month_str.isdigit():
             month = int(month_str)
@@ -118,18 +109,14 @@ def analyze_name():
             month = datetime.strptime(month_str.capitalize(), "%B").month
 
         birthdate = datetime(int(data.get("dob_year")), month, int(data.get("dob_day")))
-
-        # Age
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
-        # Generate report
         metrics = generate_child_metrics()
         summary = generate_child_summary(age, gender, country, metrics)
-        html_result = build_child_response_block(metrics, summary)
+        html_result = build_response(metrics, summary)
 
-        # Email content
-        email_body = f"""<html><body style="font-family:sans-serif;color:#333">
+        email_html = f"""<html><body style="font-family:sans-serif;color:#333">
         <h2>🎯 New User Submission:</h2>
         <p>
         👤 <strong>Full Name:</strong> {name}<br>
@@ -138,15 +125,13 @@ def analyze_name():
         🕑 <strong>Age:</strong> {age}<br>
         🌍 <strong>Country:</strong> {country}<br>
         📞 <strong>Phone:</strong> {phone}<br>
-        📧 <strong>Email:</strong> {email_addr}<br>
+        📧 <strong>Email:</strong> {email}<br>
         💬 <strong>Referrer:</strong> {referrer}
         </p>
-        <hr>
-        <h2>📊 AI-Generated Report</h2>
-        {html_result}
-        </body></html>"""
+        <hr><h2>📊 AI-Generated Report</h2>
+        {html_result}</body></html>"""
 
-        send_email(email_body)
+        send_email(email_html)
 
         return jsonify({
             "metrics": metrics,
@@ -156,7 +141,6 @@ def analyze_name():
     except Exception as e:
         app.logger.exception("Error in /analyze_name")
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
