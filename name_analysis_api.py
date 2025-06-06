@@ -18,34 +18,37 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 def send_email_with_charts(html_body, chart_images):
     try:
-        msg = MIMEMultipart('related')
-        msg["Subject"] = "New KataChatBot Submission"
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = SMTP_USERNAME
+        msg_root = MIMEMultipart('related')
+        msg_root['Subject'] = "New KatachatBot Submission"
+        msg_root['From'] = SMTP_USERNAME
+        msg_root['To'] = SMTP_USERNAME
 
         msg_alt = MIMEMultipart('alternative')
-        msg.attach(msg_alt)
-        msg_alt.attach(MIMEText(html_body, 'html'))
+        msg_root.attach(msg_alt)
+        msg_alt.attach(MIMEText(html_body, 'html', 'utf-8'))
 
-        # Attach each chart image with content ID
         for idx, base64_img in enumerate(chart_images):
             try:
-                header, encoded = base64_img.split(',', 1)
+                if "," in base64_img:
+                    _, encoded = base64_img.split(",", 1)
+                else:
+                    encoded = base64_img
                 image_data = base64.b64decode(encoded)
-                image = MIMEImage(image_data, name=f"chart{idx+1}.png")
+                image = MIMEImage(image_data)
                 cid = f"chart{idx+1}"
                 image.add_header('Content-ID', f'<{cid}>')
-                msg.attach(image)
+                image.add_header('Content-Disposition', 'inline', filename=f"{cid}.png")
+                msg_root.attach(image)
             except Exception as e:
-                app.logger.warning(f"❌ Failed to attach chart {idx+1}: {e}")
+                logging.warning(f"Chart {idx+1} failed to attach: {e}")
 
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-        app.logger.info("✅ Email with charts sent")
+            server.send_message(msg_root)
+        logging.info("✅ Email sent with embedded charts")
     except Exception as e:
-        app.logger.error("❌ Email sending failed", exc_info=True)
+        logging.error("❌ Email sending failed", exc_info=True)
 
 def generate_child_metrics():
     return [
@@ -68,13 +71,13 @@ def generate_child_metrics():
 
 def generate_child_summary(age, gender, country, metrics):
     return [
-        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them.",
+        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination. Visual learning leads at {metrics[0]['values'][0]}%, followed by auditory ({metrics[0]['values'][1]}%) and kinesthetic ({metrics[0]['values'][2]}%).",
 
-        f"{metrics[1]['values'][0]}% are building the habit of daily review. {metrics[1]['values'][2]}% show strong self-motivation in learning alone. However, only {metrics[1]['values'][1]}% are in group study — raising questions on how to ease them into peer learning environments.",
+        f"Study engagement reveals {metrics[1]['values'][0]}% do daily review and {metrics[1]['values'][2]}% prefer independent study. Only {metrics[1]['values'][1]}% engage in group study — suggesting a need for emotionally safe learning environments.",
 
-        f"Math shines at {metrics[2]['values'][0]}%, Reading at {metrics[2]['values'][1]}%, and Focus & Attention at {metrics[2]['values'][2]}%. These trends show where parents can gently support their child’s development rhythm without pressure.",
+        f"Confidence levels show Math at {metrics[2]['values'][0]}%, Reading at {metrics[2]['values'][1]}%, and Focus at {metrics[2]['values'][2]}%. These numbers guide how parents can nurture balanced academic growth.",
 
-        "These learning signals form a story of young minds filled with potential. Supporting them with the right tutors, systems, and emotional awareness will help them grow with balance and joy."
+        "Together, these learning signals tell a story of potential, effort, and emotional nuance. With the right tools and attention, every child can thrive with balance and joy."
     ]
 
 def generate_summary_html(paragraphs):
@@ -100,7 +103,7 @@ def build_response(metrics, summary_paragraphs, chart_images):
     </p>
     <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
       <strong>PS:</strong> Your personalized report will arrive in your inbox within 24 hours.
-      Feel free to WhatsApp us or schedule a 15-minute call if you'd like to discuss further.
+      If you’d like to explore the findings further, feel free to WhatsApp or book a quick 15-minute chat.
     </p>
     """
     return summary + charts_html + footer
@@ -109,7 +112,7 @@ def build_response(metrics, summary_paragraphs, chart_images):
 def analyze_name():
     try:
         data = request.get_json(force=True)
-        app.logger.info(f"[analyze_name] payload: {data}")
+        logging.info(f"[analyze_name] Payload received")
 
         name = data.get("name", "").strip()
         chinese_name = data.get("chinese_name", "").strip()
@@ -125,6 +128,7 @@ def analyze_name():
             month = int(month_str)
         else:
             month = datetime.strptime(month_str.capitalize(), "%B").month
+
         birthdate = datetime(int(data.get("dob_year")), month, int(data.get("dob_day")))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
@@ -158,7 +162,7 @@ def analyze_name():
         })
 
     except Exception as e:
-        app.logger.exception("Error in /analyze_name")
+        logging.exception("❌ Error in /analyze_name")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
