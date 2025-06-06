@@ -54,22 +54,17 @@ def generate_child_metrics():
 
 def generate_child_summary(age, gender, country, metrics):
     return [
-        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them. Auditory learning follows at {metrics[0]['values'][1]}%, and kinesthetic approaches like hands-on activities sit at {metrics[0]['values'][2]}%. These figures are not just numbers — they reflect the need to present information in ways that touch the heart and imagination of each child. When a child sees their own world come alive in pictures or guided tales, their curiosity deepens. For parents, this is an opportunity to bring home lessons through picture books, visual games, and shared storytelling moments that make learning both joyful and lasting.",
-
-        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review — a remarkable sign of discipline at such a young age. Meanwhile, {metrics[1]['values'][2]}% show strong signs of self-motivation when learning alone, a trait that speaks volumes about their inner drive. However, only {metrics[1]['values'][1]}% are regularly involved in group study, which may hint at a deeper emotional preference for learning in safe, quiet spaces rather than competitive or chaotic ones. For parents, this raises a gentle question: how can we slowly introduce our children to peer learning in a way that feels supportive, not stressful? Nurturing environments like parent-child revision time, or cozy group storytelling with trusted friends, might be the bridge they need.",
-
-        f"Confidence in core subjects reveals another meaningful insight. Math currently shines the brightest at {metrics[2]['values'][0]}%, while Reading scores slightly higher at {metrics[2]['values'][1]}%. The Focus & Attention score at {metrics[2]['values'][2]}% suggests many of these learners are still mastering the art of sustained concentration. But instead of seeing this as a weakness, parents can view it as a developmental rhythm — one that simply needs the right melody to guide it. Emotional regulation, gentle routines, reduced screen time, and creative classroom techniques like music-integrated learning or movement breaks may offer small but powerful shifts. Each child has their own tempo — the key is helping them find it without pressure or comparison.",
-
-        "Together, these learning signals form more than a snapshot — they tell a story. A story of young minds filled with potential, quietly hoping the adults around them will notice not just their results, but their efforts, moods, and learning preferences. Parents and educators in Singapore, Malaysia, and Taiwan now have the chance to craft truly child-centered support. Whether it's choosing tutors who adapt to visual needs, or finding school systems that value emotional growth as much as academic grades — the goal remains the same: to help every child thrive with a sense of balance, self-worth, and joy in the journey."
+        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials...",
+        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review...",
+        f"Confidence in core subjects reveals another meaningful insight. Math currently shines at {metrics[2]['values'][0]}%, Reading at {metrics[2]['values'][1]}%, and Focus & Attention at {metrics[2]['values'][2]}%...",
+        "Together, these learning signals form more than a snapshot — they tell a story..."
     ]
 
 def generate_summary_html(paragraphs):
     return "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>" + \
         "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{p}</p>\n" for p in paragraphs)
 
-def build_response(metrics, summary_paragraphs, chart_images):
-    summary = generate_summary_html(summary_paragraphs)
-
+def generate_email_charts(metrics):
     def make_bar_html(title, labels, values, color):
         bar_html = f"<h3 style='color:#333; margin-top:30px;'>{title}</h3>"
         for label, val in zip(labels, values):
@@ -90,7 +85,9 @@ def build_response(metrics, summary_paragraphs, chart_images):
     for idx, m in enumerate(metrics):
         color = color_map[idx % len(color_map)]
         charts_html += make_bar_html(m["title"], m["labels"], m["values"], color)
+    return charts_html
 
+def build_email_report(summary_html, charts_html):
     footer = """
     <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
       <strong>The insights in this report are generated by KataChat’s AI systems analyzing:</strong><br>
@@ -103,8 +100,7 @@ def build_response(metrics, summary_paragraphs, chart_images):
       If you’d like to explore the findings further, feel free to WhatsApp or book a quick 15-minute chat.
     </p>
     """
-
-    return summary + charts_html + footer
+    return summary_html + charts_html + footer
 
 @app.route("/analyze_name", methods=["POST"])
 def analyze_name():
@@ -127,8 +123,10 @@ def analyze_name():
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
         metrics = generate_child_metrics()
-        summary = generate_child_summary(age, gender, country, metrics)
-        html_result = build_response(metrics, summary, [])
+        summary_paragraphs = generate_child_summary(age, gender, country, metrics)
+        summary_only_html = generate_summary_html(summary_paragraphs)
+        charts_html = generate_email_charts(metrics)
+        email_html_result = build_email_report(summary_only_html, charts_html)
 
         email_html = f"""<html><body style="font-family:sans-serif;color:#333">
         <h2>🎯 New User Submission:</h2>
@@ -144,14 +142,14 @@ def analyze_name():
         💬 <strong>Referrer:</strong> {referrer}
         </p>
         <hr><h2>📊 AI-Generated Report</h2>
-        {html_result}
+        {email_html_result}
         </body></html>"""
 
         send_email(email_html)
 
         return jsonify({
             "metrics": metrics,
-            "analysis": html_result
+            "analysis": summary_only_html  # 🚫 no bar charts sent back to frontend
         })
 
     except Exception as e:
