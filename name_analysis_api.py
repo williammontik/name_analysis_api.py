@@ -3,7 +3,6 @@ import os, smtplib, logging, random, base64
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -16,37 +15,22 @@ SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-def send_email_with_charts(html_body, chart_images):
+def send_email_with_chart_links(html_body, chart_images):
     try:
-        msg_root = MIMEMultipart('related')
-        msg_root['Subject'] = "New KatachatBot Submission"
+        msg_root = MIMEMultipart('alternative')
+        msg_root['Subject'] = "New KataChatBot Submission"
         msg_root['From'] = SMTP_USERNAME
         msg_root['To'] = SMTP_USERNAME
 
-        msg_alt = MIMEMultipart('alternative')
-        msg_root.attach(msg_alt)
-        msg_alt.attach(MIMEText(html_body, 'html', 'utf-8'))
-
-        for idx, base64_img in enumerate(chart_images):
-            try:
-                if "," in base64_img:
-                    _, encoded = base64_img.split(",", 1)
-                else:
-                    encoded = base64_img
-                image_data = base64.b64decode(encoded)
-                image = MIMEImage(image_data)
-                cid = f"chart{idx+1}"
-                image.add_header('Content-ID', f'<{cid}>')
-                image.add_header('Content-Disposition', 'inline', filename=f"{cid}.png")
-                msg_root.attach(image)
-            except Exception as e:
-                logging.warning(f"Chart {idx+1} failed to attach: {e}")
+        # Attach the HTML
+        msg_root.attach(MIMEText(html_body, 'html', 'utf-8'))
 
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg_root)
-        logging.info("✅ Email sent with embedded charts")
+
+        logging.info("✅ Email sent with chart links")
     except Exception as e:
         logging.error("❌ Email sending failed", exc_info=True)
 
@@ -71,13 +55,13 @@ def generate_child_metrics():
 
 def generate_child_summary(age, gender, country, metrics):
     return [
-        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination. Visual learning leads at {metrics[0]['values'][0]}%, followed by auditory ({metrics[0]['values'][1]}%) and kinesthetic ({metrics[0]['values'][2]}%).",
+        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them. Auditory learning follows at {metrics[0]['values'][1]}%, and kinesthetic approaches like hands-on activities sit at {metrics[0]['values'][2]}%. These figures are not just numbers — they reflect the need to present information in ways that touch the heart and imagination of each child. When a child sees their own world come alive in pictures or guided tales, their curiosity deepens. For parents, this is an opportunity to bring home lessons through picture books, visual games, and shared storytelling moments that make learning both joyful and lasting.",
 
-        f"Study engagement reveals {metrics[1]['values'][0]}% do daily review and {metrics[1]['values'][2]}% prefer independent study. Only {metrics[1]['values'][1]}% engage in group study — suggesting a need for emotionally safe learning environments.",
+        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review — a remarkable sign of discipline at such a young age. Meanwhile, {metrics[1]['values'][2]}% show strong signs of self-motivation when learning alone, a trait that speaks volumes about their inner drive. However, only {metrics[1]['values'][1]}% are regularly involved in group study, which may hint at a deeper emotional preference for learning in safe, quiet spaces rather than competitive or chaotic ones. For parents, this raises a gentle question: how can we slowly introduce our children to peer learning in a way that feels supportive, not stressful? Nurturing environments like parent-child revision time, or cozy group storytelling with trusted friends, might be the bridge they need.",
 
-        f"Confidence levels show Math at {metrics[2]['values'][0]}%, Reading at {metrics[2]['values'][1]}%, and Focus at {metrics[2]['values'][2]}%. These numbers guide how parents can nurture balanced academic growth.",
+        f"Confidence in core subjects reveals another meaningful insight. Math currently shines the brightest at {metrics[2]['values'][0]}%, while Reading scores slightly higher at {metrics[2]['values'][1]}%. The Focus & Attention score at {metrics[2]['values'][2]}% suggests many of these learners are still mastering the art of sustained concentration. But instead of seeing this as a weakness, parents can view it as a developmental rhythm — one that simply needs the right melody to guide it. Emotional regulation, gentle routines, reduced screen time, and creative classroom techniques like music-integrated learning or movement breaks may offer small but powerful shifts. Each child has their own tempo — the key is helping them find it without pressure or comparison.",
 
-        "Together, these learning signals tell a story of potential, effort, and emotional nuance. With the right tools and attention, every child can thrive with balance and joy."
+        "Together, these learning signals form more than a snapshot — they tell a story. A story of young minds filled with potential, quietly hoping the adults around them will notice not just their results, but their efforts, moods, and learning preferences. Parents and educators in Singapore, Malaysia, and Taiwan now have the chance to craft truly child-centered support. Whether it's choosing tutors who adapt to visual needs, or finding school systems that value emotional growth as much as academic grades — the goal remains the same: to help every child thrive with a sense of balance, self-worth, and joy in the journey."
     ]
 
 def generate_summary_html(paragraphs):
@@ -89,9 +73,10 @@ def build_response(metrics, summary_paragraphs, chart_images):
 
     charts_html = ""
     if chart_images:
-        charts_html += "<div style='margin-top:30px;'><strong style='font-size:20px;'>📈 Chart Visualizations:</strong><br><br>"
-        for idx in range(len(chart_images)):
-            charts_html += f"<img src='cid:chart{idx+1}' style='width:100%;max-width:600px;margin-bottom:20px;border:1px solid #ccc;border-radius:8px;'><br>"
+        charts_html += "<div style='margin-top:30px;'><strong style='font-size:20px;'>📈 Download Chart Images:</strong><br><br>"
+        for idx, base64_img in enumerate(chart_images):
+            safe_url = base64_img if base64_img.startswith("data:image") else f"data:image/png;base64,{base64_img}"
+            charts_html += f"<a href='{safe_url}' download='chart{idx+1}.png'>🖼️ Download Chart {idx+1}</a><br><br>"
         charts_html += "</div>"
 
     footer = """
@@ -154,7 +139,7 @@ def analyze_name():
         {html_result}
         </body></html>"""
 
-        send_email_with_charts(email_html, chart_images)
+        send_email_with_chart_links(email_html, chart_images)
 
         return jsonify({
             "metrics": metrics,
