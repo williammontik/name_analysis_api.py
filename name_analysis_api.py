@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-import os, smtplib, logging, random
+import os, smtplib, logging, random, base64
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -14,19 +16,35 @@ SMTP_PORT = 587
 SMTP_USERNAME = "kata.chatbot@gmail.com"
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-def send_email(html_body):
-    subject = "New KataChatBot Submission"
-    msg = MIMEText(html_body, 'html')
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USERNAME
-    msg["To"] = SMTP_USERNAME
+def send_email_with_charts(html_body, chart_images):
     try:
+        msg = MIMEMultipart('related')
+        msg["Subject"] = "New KataChatBot Submission"
+        msg["From"] = SMTP_USERNAME
+        msg["To"] = SMTP_USERNAME
+
+        msg_alt = MIMEMultipart('alternative')
+        msg.attach(msg_alt)
+        msg_alt.attach(MIMEText(html_body, 'html'))
+
+        # Attach each chart image with content ID
+        for idx, base64_img in enumerate(chart_images):
+            try:
+                header, encoded = base64_img.split(',', 1)
+                image_data = base64.b64decode(encoded)
+                image = MIMEImage(image_data, name=f"chart{idx+1}.png")
+                cid = f"chart{idx+1}"
+                image.add_header('Content-ID', f'<{cid}>')
+                msg.attach(image)
+            except Exception as e:
+                app.logger.warning(f"❌ Failed to attach chart {idx+1}: {e}")
+
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-        app.logger.info("✅ Email sent")
-    except Exception:
+        app.logger.info("✅ Email with charts sent")
+    except Exception as e:
         app.logger.error("❌ Email sending failed", exc_info=True)
 
 def generate_child_metrics():
@@ -50,27 +68,27 @@ def generate_child_metrics():
 
 def generate_child_summary(age, gender, country, metrics):
     return [
-        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them. Auditory learning follows at {metrics[0]['values'][1]}%, and kinesthetic approaches like hands-on activities sit at {metrics[0]['values'][2]}%. These figures are not just numbers — they reflect the need to present information in ways that touch the heart and imagination of each child.",
+        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them.",
 
-        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review — a remarkable sign of discipline at such a young age. Meanwhile, {metrics[1]['values'][2]}% show strong signs of self-motivation when learning alone. However, only {metrics[1]['values'][1]}% are regularly involved in group study. For parents, this raises a gentle question: how can we slowly introduce our children to peer learning in a way that feels supportive, not stressful?",
+        f"{metrics[1]['values'][0]}% are building the habit of daily review. {metrics[1]['values'][2]}% show strong self-motivation in learning alone. However, only {metrics[1]['values'][1]}% are in group study — raising questions on how to ease them into peer learning environments.",
 
-        f"Confidence in core subjects reveals another meaningful insight. Math currently shines the brightest at {metrics[2]['values'][0]}%, while Reading scores slightly higher at {metrics[2]['values'][1]}%. The Focus & Attention score at {metrics[2]['values'][2]}% suggests many of these learners are still mastering the art of sustained concentration. But instead of seeing this as a weakness, parents can view it as a developmental rhythm — one that simply needs the right melody to guide it.",
+        f"Math shines at {metrics[2]['values'][0]}%, Reading at {metrics[2]['values'][1]}%, and Focus & Attention at {metrics[2]['values'][2]}%. These trends show where parents can gently support their child’s development rhythm without pressure.",
 
-        "Together, these learning signals form more than a snapshot — they tell a story. A story of young minds filled with potential, quietly hoping the adults around them will notice not just their results, but their efforts, moods, and learning preferences. Whether it's choosing tutors who adapt to visual needs, or finding school systems that value emotional growth as much as academic grades — the goal remains the same: to help every child thrive with a sense of balance, self-worth, and joy in the journey."
+        "These learning signals form a story of young minds filled with potential. Supporting them with the right tutors, systems, and emotional awareness will help them grow with balance and joy."
     ]
 
 def generate_summary_html(paragraphs):
     return "<div style='font-size:24px; font-weight:bold; margin-top:30px;'>🧠 Summary:</div><br>" + \
         "".join(f"<p style='line-height:1.7; font-size:16px; margin-bottom:16px;'>{p}</p>\n" for p in paragraphs)
 
-def build_response(metrics, summary_paragraphs, chart_images=[]):
+def build_response(metrics, summary_paragraphs, chart_images):
     summary = generate_summary_html(summary_paragraphs)
-    
+
     charts_html = ""
     if chart_images:
         charts_html += "<div style='margin-top:30px;'><strong style='font-size:20px;'>📈 Chart Visualizations:</strong><br><br>"
-        for img in chart_images:
-            charts_html += f"<img src='{img}' style='width:100%;max-width:600px;margin-bottom:20px;border:1px solid #ccc;border-radius:8px;'><br>"
+        for idx in range(len(chart_images)):
+            charts_html += f"<img src='cid:chart{idx+1}' style='width:100%;max-width:600px;margin-bottom:20px;border:1px solid #ccc;border-radius:8px;'><br>"
         charts_html += "</div>"
 
     footer = """
@@ -82,7 +100,7 @@ def build_response(metrics, summary_paragraphs, chart_images=[]):
     </p>
     <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
       <strong>PS:</strong> Your personalized report will arrive in your inbox within 24 hours.
-      If you have questions, reach out on WhatsApp or schedule a short 15-minute call.
+      Feel free to WhatsApp us or schedule a 15-minute call if you'd like to discuss further.
     </p>
     """
     return summary + charts_html + footer
@@ -102,13 +120,11 @@ def analyze_name():
         referrer = data.get("referrer", "").strip()
         chart_images = data.get("chart_images", [])
 
-        # Handle both month number and month name (e.g. "August")
         month_str = str(data.get("dob_month")).strip()
         if month_str.isdigit():
             month = int(month_str)
         else:
             month = datetime.strptime(month_str.capitalize(), "%B").month
-
         birthdate = datetime(int(data.get("dob_year")), month, int(data.get("dob_day")))
         today = datetime.today()
         age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
@@ -134,7 +150,7 @@ def analyze_name():
         {html_result}
         </body></html>"""
 
-        send_email(email_html)
+        send_email_with_charts(email_html, chart_images)
 
         return jsonify({
             "metrics": metrics,
