@@ -22,12 +22,10 @@ def send_email(html_body):
         msg['From'] = SMTP_USERNAME
         msg['To'] = SMTP_USERNAME
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
-
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-
         logging.info("✅ Email sent successfully")
     except Exception as e:
         logging.error("❌ Email sending failed", exc_info=True)
@@ -53,10 +51,13 @@ def generate_child_metrics():
 
 def generate_child_summary(age, gender, country, metrics):
     return [
-        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them...",
-        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review...",
-        f"Confidence in core subjects reveals another meaningful insight. Math currently shines the brightest at {metrics[2]['values'][0]}%, while Reading scores slightly higher at {metrics[2]['values'][1]}%...",
-        "Together, these learning signals form more than a snapshot — they tell a story. A story of young minds filled with potential, quietly hoping the adults around them will notice..."
+        f"In {country}, many young {gender.lower()} children around the age of {age} are stepping into the early stages of learning with quiet determination and unique preferences. Among them, visual learning stands out as a powerful anchor — with {metrics[0]['values'][0]}% of learners gravitating toward images, colors, and story-based materials to make sense of the world around them. Auditory learning follows at {metrics[0]['values'][1]}%, and kinesthetic approaches like hands-on activities sit at {metrics[0]['values'][2]}%. These figures are not just numbers — they reflect the need to present information in ways that touch the heart and imagination of each child. When a child sees their own world come alive in pictures or guided tales, their curiosity deepens. For parents, this is an opportunity to bring home lessons through picture books, visual games, and shared storytelling moments that make learning both joyful and lasting.",
+
+        f"When we look deeper into how these children engage with their studies, a touching pattern emerges. {metrics[1]['values'][0]}% are already building the habit of daily review — a remarkable sign of discipline at such a young age. Meanwhile, {metrics[1]['values'][2]}% show strong signs of self-motivation when learning alone, a trait that speaks volumes about their inner drive. However, only {metrics[1]['values'][1]}% are regularly involved in group study, which may hint at a deeper emotional preference for learning in safe, quiet spaces rather than competitive or chaotic ones. For parents, this raises a gentle question: how can we slowly introduce our children to peer learning in a way that feels supportive, not stressful? Nurturing environments like parent-child revision time, or cozy group storytelling with trusted friends, might be the bridge they need.",
+
+        f"Confidence in core subjects reveals another meaningful insight. Math currently shines the brightest at {metrics[2]['values'][0]}%, while Reading scores slightly higher at {metrics[2]['values'][1]}%. The Focus & Attention score at {metrics[2]['values'][2]}% suggests many of these learners are still mastering the art of sustained concentration. But instead of seeing this as a weakness, parents can view it as a developmental rhythm — one that simply needs the right melody to guide it. Emotional regulation, gentle routines, reduced screen time, and creative classroom techniques like music-integrated learning or movement breaks may offer small but powerful shifts. Each child has their own tempo — the key is helping them find it without pressure or comparison.",
+
+        "Together, these learning signals form more than a snapshot — they tell a story. A story of young minds filled with potential, quietly hoping the adults around them will notice not just their results, but their efforts, moods, and learning preferences. Parents and educators in Singapore, Malaysia, and Taiwan now have the chance to craft truly child-centered support. Whether it's choosing tutors who adapt to visual needs, or finding school systems that value emotional growth as much as academic grades — the goal remains the same: to help every child thrive with a sense of balance, self-worth, and joy in the journey."
     ]
 
 def generate_summary_html(paragraphs):
@@ -123,9 +124,9 @@ def analyze_name():
 
         metrics = generate_child_metrics()
         summary_paragraphs = generate_child_summary(age, gender, country, metrics)
-        summary_only_html = generate_summary_html(summary_paragraphs) + build_email_report("", "")  # Only footer
+        summary_only_html = generate_summary_html(summary_paragraphs)
         charts_html = generate_email_charts(metrics)
-        email_html_result = build_email_report(generate_summary_html(summary_paragraphs), charts_html)
+        email_html_result = build_email_report(summary_only_html, charts_html)
 
         email_html = f"""<html><body style="font-family:sans-serif;color:#333">
         <h2>🎯 New User Submission:</h2>
@@ -146,9 +147,11 @@ def analyze_name():
 
         send_email(email_html)
 
+        # Add footer to web display only
+        display_footer = build_email_report("", "")
         return jsonify({
             "metrics": metrics,
-            "analysis": summary_only_html
+            "analysis": summary_only_html + display_footer
         })
 
     except Exception as e:
