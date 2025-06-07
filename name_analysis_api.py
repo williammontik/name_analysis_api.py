@@ -96,8 +96,8 @@ def build_email_report(summary_html, charts_html):
       <em>All data is processed through our AI models to identify statistically significant patterns while maintaining strict PDPA compliance.</em>
     </p>
     <p style="background-color:#e6f7ff; color:#00529B; padding:15px; border-left:4px solid #00529B; margin:20px 0;">
-      <strong>PS:</strong> Your personalized report will arrive in your inbox within 24 hours.
-      If you’d like to explore the findings further, feel free to WhatsApp or book a quick 15-minute chat.
+      <strong>PS:</strong> Your personalized report will arrive in your inbox within 24-48 hours.
+      If you’d like to explore the findings further, feel free to telegram or book a quick 15-minute chat.
     </p>
     """
     return summary_html + charts_html + footer
